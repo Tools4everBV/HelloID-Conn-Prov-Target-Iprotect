@@ -1,6 +1,6 @@
 [
     {
-        "key": "urlUsers",
+        "key": "urlUser",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
@@ -15,7 +15,7 @@
         "defaultValue": "",
         "templateOptions": {
             "label": "XMLSQL web service URL",
-            "placeholder": "https://<ip>:<port>/Webcontrols/automated/import",
+            "placeholder": "https://<ip>:<port>/Webcontrols",
             "required": true
         }
     },
@@ -46,7 +46,7 @@
         "defaultValue": "",
         "templateOptions": {
             "label": "Proxy address",
-            "placeholder": "https://<ip>:<port>/Webcontrols/automated/import",
+            "placeholder": "http://localhost:8888",
             "required": false
         }
     },
