@@ -86,17 +86,58 @@ $ConnectorSettings = @{
                 Method = 'Post'
                 Headers = $headers                
                 UseBasicParsing = $true
+                MaximumRedirection = 0    
                 Body = $body;               
             }       
         
             try{
-                $Requestresult = Invoke-WebRequest @splatWebRequestParameters  
+                $Requestresult = Invoke-WebRequest @splatWebRequestParameters 
+                if ($Requestresult.StatusCode -eq 302)
+                {
+                    ConnectorSettings.authenticationSuccess = $true
+                }
+
             }
             catch{
                 throw $_S
             }
         }
     }
+
+    # execute query
+    if (ConnectorSettings.authenticationSuccess)
+    {
+        $query = 'SELECT * FROM person'
+        $queryType = 'query'
+        switch ($queryType)
+        {
+            'query' { $body = '<?xml version=\"1.0\" encoding=\"UTF-8\"?><query><sql>$query</sql></query>'}                
+            'update'{ $body = '<?xml version=\"1.0\" encoding=\"UTF-8\"?><update><sql>$query</sql></update>'}                 
+        }
+        $webservicePath = "xmlsql"
+        $headers = @{
+            'Content-Type' = 'text/xml;charset=ISO-8859-1' 
+            'Cookie' = $ConnectorSettings.authorizationCookie                       
+        }
+        $splatWebRequestParameters = @{
+            Uri = $Connectorsettings.config.urlXMLSQL + $webservicePath
+            Method = 'Post'
+            Headers = $headers                
+            UseBasicParsing = $true
+            MaximumRedirection = 0    
+            Body = $body;               
+        }       
+    
+        try{
+            $Requestresult = Invoke-WebRequest @splatWebRequestParameters      
+        }
+        catch{
+            throw $_S
+        }
+    }
+
+
+
      
 
 
