@@ -30,9 +30,7 @@ $ConnectorSettings = @{
         [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
     }
     
-    #  first retrieve the connection cookie
-
-  
+    #  first retrieve the connection cookie  
 
     $webservicePath = "xmlsql"
     $headers = @{
@@ -47,14 +45,14 @@ $ConnectorSettings = @{
         TimeoutSec = 60 
         MaximumRedirection = 0    
         Body = "";
-    }
-    
+        SessionVariable = 'curSession'
+    }    
 
     try{
         $Requestresult = Invoke-WebRequest @splatWebRequestParameters  
     }
     catch{
-        throw $_S
+        throw $_
     }
     if($null -ne $Requestresult.Headers)
     {
@@ -87,62 +85,55 @@ $ConnectorSettings = @{
                 Headers = $headers                
                 UseBasicParsing = $true
                 MaximumRedirection = 0    
-                Body = $body;               
+                Body = $body;     
+                WebSession = $curSession        
             }       
         
             try{
-                $Requestresult = Invoke-WebRequest @splatWebRequestParameters 
-                if ($Requestresult.StatusCode -eq 302)
-                {
-                    ConnectorSettings.authenticationSuccess = $true
-                }
-
+                $Requestresult = Invoke-WebRequest @splatWebRequestParameters                
             }
             catch{
-                throw $_S
+                throw $_
+            }
+            if ($Requestresult.StatusCode -eq 302)
+            {
+                $ConnectorSettings.authenticationSuccess = $true
             }
         }
     }
 
     # execute query
-    if (ConnectorSettings.authenticationSuccess)
+    if ($ConnectorSettings.authenticationSuccess)
     {
         $query = 'SELECT * FROM person'
         $queryType = 'query'
         switch ($queryType)
         {
-            'query' { $body = '<?xml version=\"1.0\" encoding=\"UTF-8\"?><query><sql>$query</sql></query>'}                
-            'update'{ $body = '<?xml version=\"1.0\" encoding=\"UTF-8\"?><update><sql>$query</sql></update>'}                 
+            'query' {  $body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>"}                
+            'update' { $body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>"}                 
         }
         $webservicePath = "xmlsql"
         $headers = @{
-            'Content-Type' = 'text/xml;charset=ISO-8859-1' 
+            'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'          
             'Cookie' = $ConnectorSettings.authorizationCookie                       
         }
         $splatWebRequestParameters = @{
             Uri = $Connectorsettings.config.urlXMLSQL + $webservicePath
             Method = 'Post'
             Headers = $headers                
-            UseBasicParsing = $true
-            MaximumRedirection = 0    
-            Body = $body;               
+            UseBasicParsing = $true              
+            ContentType = 'text/xml;charset=ISO-8859-1' 
+            Body = $body; 
+            WebSession = $curSession                
         }       
     
         try{
             $Requestresult = Invoke-WebRequest @splatWebRequestParameters      
         }
         catch{
-            throw $_S
+            throw $_
         }
     }
-
-
-
-     
-
-
-
-
 
 
     $result = [PSCustomObject]@{ 
