@@ -3,8 +3,7 @@ $DebugTest= $true;
 
 if ($DebugTest)
 { 
-    #simulate the input normally provided by the caller as required
- 
+    #simulate the input normally provided by the caller as required 
     $debugConfiguration = Get_DebugConfiguration -ConfigurationID "iprotect"
     $configuration = $debugConfiguration  | ConvertTo-Json -Depth 10
     $debugPerson = @{DisplayName = "testPersonDisplayName"}
@@ -17,7 +16,7 @@ $ConnectorSettings = @{
     p = $person | ConvertFrom-Json
     # aRef = $accountReference | ConvertFrom-Json
     authenticationSuccess = $false;
-    authorizationCookie = ""
+    authorizationCookie = $null
     }
     
     $auditMessage = "iprotect identity for person " + $p.DisplayName + " not updated successfully";
@@ -37,36 +36,70 @@ $ConnectorSettings = @{
 
     $webservicePath = "xmlsql"
     $headers = @{
-        'Content-Type' = "application/x-www-form-urlencoded"                
-    }
+        'Content-Type' = "application/x-www-form-urlencoded"            
+    } 
 
-    if ($ConnectorSettings.config.proxyAddress -ne "")
-    {
-        $splatWebRequestParameters = @{
-            Uri = $ConnectorSettings.config.urlXMLSQL + $webservicePath
-            Method = 'Post'
-            Headers = $headers
-            Proxy = $ConnectorSettings.config.proxyAddress
-            UseBasicParsing = $true
-            Body = "";  
-        }             
+    $splatWebRequestParameters = @{
+        Uri = $Connectorsettings.config.urlXMLSQL + $webservicePath
+        Method = 'Post'
+        Headers = $headers                
+        UseBasicParsing = $true
+        TimeoutSec = 60 
+        MaximumRedirection = 0    
+        Body = "";
     }
-    else {
-        $splatWebRequestParameters = @{
-            Uri = $Connectorsettings.config.urlXMLSQL + $webservicePath
-            Method = 'Post'
-            Headers = $headers                
-            UseBasicParsing = $true
-            Body = "";
-        }
-    }  
     
+
     try{
         $Requestresult = Invoke-WebRequest @splatWebRequestParameters  
     }
     catch{
-        throw $_
+        throw $_S
     }
+    if($null -ne $Requestresult.Headers)
+    {
+        if ($null -ne $Requestresult.Headers["Set-Cookie"] )
+        {
+            $authorizationCookie = $Requestresult.Headers["Set-Cookie"]
+
+            if ($authorizationCookie.IndexOf(";") -gt 0)
+            {
+                $CookieString = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(";"));
+                $ConnectorSettings.authorizationCookie = $CookieString;
+            }
+        }
+    }
+    # setup connection
+    if ($null -ne $ConnectorSettings.authorizationCookie)
+    {
+        if ( $ConnectorSettings.authorizationCookie.length -gt 0)
+        {
+            $webservicePath = 'j_security_check'
+            $headers = @{
+                'Content-Type' = "application/x-www-form-urlencoded" 
+                'Cookie' = $ConnectorSettings.authorizationCookie                       
+            }
+            $body = "&j_username=$($debugConfiguration.UserName)&j_password=$($debugConfiguration.Password)" 
+            
+            $splatWebRequestParameters = @{
+                Uri = $Connectorsettings.config.urlXMLSQL + $webservicePath
+                Method = 'Post'
+                Headers = $headers                
+                UseBasicParsing = $true
+                Body = $body;               
+            }       
+        
+            try{
+                $Requestresult = Invoke-WebRequest @splatWebRequestParameters  
+            }
+            catch{
+                throw $_S
+            }
+        }
+    }
+     
+
+
 
 
 
