@@ -1,0 +1,43 @@
+[
+    {
+        "key": "UrlUser",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "USER web service URL",
+            "placeholder": "https://<ip>:<port>/Webcontrols/automated/import",
+            "required": true
+        }
+    },
+    {
+        "key": "UrlXMLSQL",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "XMLSQL web service URL",
+            "placeholder": "https://<ip>:<port>/Webcontrols",
+            "required": true
+        }
+    },
+    {
+        "key": "Username",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "User name",
+            "placeholder": "Please enter user name",
+            "required": true
+        }
+    },
+    {
+      "key": "Password",
+      "type": "input",
+      "defaultValue": "",
+      "templateOptions": {
+        "label": "Password",
+        "type": "password",
+        "placeholder": "Please enter a password",
+        "required": true
+      }
+    }   
+  ]
