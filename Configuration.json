@@ -1,6 +1,6 @@
 [
     {
-        "key": "urlUser",
+        "key": "UrlUser",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
@@ -10,7 +10,7 @@
         }
     },
     {
-        "key": "urlXMLSQL",
+        "key": "UrlXMLSQL",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
@@ -20,7 +20,7 @@
         }
     },
     {
-        "key": "username",
+        "key": "Username",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
@@ -29,46 +29,15 @@
             "required": true
         }
     },
-      {
-        "key": "password",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-          "label": "Password",
-          "type": "password",
-          "placeholder": "Please enter a password",
-          "required": true
-        }
-      },
-      {
-        "key": "proxyAddress",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-            "label": "Proxy address",
-            "placeholder": "http://localhost:8888",
-            "required": false
-        }
-    },
     {
-        "key": "proxyUsername",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-            "label": "Proxy user name",
-            "placeholder": "Please enter user name",
-            "required": false
-        }
-    },
-      {
-        "key": "proxyPassword",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-          "label": "Proxy password",
-          "type": "password",
-          "placeholder": "Please enter a password",
-          "required": false
-        }
-      }   
+      "key": "Password",
+      "type": "input",
+      "defaultValue": "",
+      "templateOptions": {
+        "label": "Password",
+        "type": "password",
+        "placeholder": "Please enter a password",
+        "required": true
+      }
+    }   
   ]
