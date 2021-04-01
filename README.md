@@ -5,7 +5,7 @@
 # Prerequisites
 
 An Iprotect account ("systeemgebruiker") must be created with sufficient rights to query and update the employees and accesskeys
-Make sure that the box "synchronisatie beheerder" is checked in the "detail systemmgebruiker", and that the account has sufficient rights to query and update the iprotect database
+Make sure that the box "synchronisatie beheerder" is checked in the "detail systeemgebruiker", and that the account has sufficient rights to query and update the iprotect database
 
 To verify this: login into the web GUI  with a browser of iprotect with this account and check 
 1.  The ability to successfully query the accesskey, employee and user tables with this account
