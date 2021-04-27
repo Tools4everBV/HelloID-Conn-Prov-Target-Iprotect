@@ -90,9 +90,5 @@ The Create, update and delete scripts use the simple import api, in which you ju
   Because there is no combined index in keykeygroup on both  "accesskeyid" "keygroupid" they cannot be combined in the delete.
   Therefore we need to first collect the KeyKeyID
 
-
-       
-
-    
-
-                              
+# HelloID Docs
+The official HelloID documentation can be found at: https://docs.helloid.com/         
