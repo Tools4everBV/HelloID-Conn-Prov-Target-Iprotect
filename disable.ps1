@@ -1,445 +1,276 @@
-# 1) get the accesskeyid of the account
-# 2) disable the accesskey
-$aRef = $accountReference | ConvertFrom-Json    
-$config = ConvertFrom-Json $configuration
-$dR = $dryRun |  ConvertFrom-Json 
-$offline = $dR
+#####################################################
+# HelloID-Conn-Prov-Target-iProtect-Disable
+#
+# Version: 2.0.0
+#####################################################
+# Initialize default values
+$config = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
+$aRef = $accountReference | ConvertFrom-Json
+$success = $false
+$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-if ($dR -eq $true )
-{
-    $connSettings.ARef = @{   EmployeeSalaryNR = $connSettings.Person.ExternalId
-        PersonName = $connSettings.Person.Name.FamilyName 
-    }          
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+
+# Set debug logging
+switch ($($config.IsDebug)) {
+    $true { $VerbosePreference = 'Continue' }
+    $false { $VerbosePreference = 'SilentlyContinue' }
 }
 
-$Enable= $false;     
-$success = $false;        
-$auditMessage = "iprotect identity for person " + $p.DisplayName + " not disabled successfully";
-$accesskeyIdList = [System.Collections.ArrayList]::new();
-        
-if ([Net.ServicePointManager]::SecurityProtocol -notmatch "Tls12") {
-    [Net.ServicePointManager]::SecurityProtocol += [Net.SecurityProtocolType]::Tls12
-}
-
-#  query iprotect to get the list of accesskeys        
-#  first retrieve the connection cookie, but also send the query 
-
-$query = "SELECT
-TABLEPERSON.PERSONID as person_id,
-TABLEPERSON.NAME as person_name,
-TABLEPERSON.FIRSTNAME as person_first_name,        
-TABLEEMPLOYEE.SALARYNR as employee_salarynr,        
-VIEWACCESSKEY.ACCESSKEYID as access_key_id, 
-VIEWACCESSKEY.RCN as access_keyrcn,        
-VIEWACCESSKEY.VALID as access_key_valid 
-FROM employee TABLEEMPLOYEE
-LEFT OUTER JOIN person TABLEPERSON ON TABLEPERSON.personID = TABLEEMPLOYEE.personID 
-LEFT OUTER JOIN accesskeyview VIEWACCESSKEY ON viewAccesskey.personID =  TABLEPERSON.personID "						
-
-$queryType = 'query'
-switch ($queryType)
-{
-    'query' {  $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>"}                
-    'update' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>"}                 
-}
-
-$webservicePath = "xmlsql"
-$headers = @{
-    'Content-Type' = "application/x-www-form-urlencoded"            
-} 
-
-$splatWebRequestParameters = @{
-    Uri = $config.urlXMLSQL + $webservicePath
-    Method = 'Post'
-    Headers = $headers                
-    UseBasicParsing = $true
-    TimeoutSec = 60 
-    MaximumRedirection = 0    
-    Body = $queryBody;
-    SessionVariable = 'curSession'
-}         
-if(-Not($offline -eq $true)) {
-
-    try{
-        $requestResult = Invoke-WebRequest @splatWebRequestParameters  -ErrorAction SilentlyContinue
-    }
-    catch{
-        throw $_
-    } 
-}
-else 
-{
-    $headers = @{ "Set-Cookie" = "dummycookie;blabla"}
-    $requestResult = @{ Headers = $headers}
-}
-
-if($null -ne $requestResult.Headers) {
-    if ($null -ne $requestResult.Headers["Set-Cookie"] ) {
-        $authorizationCookie = $requestResult.Headers["Set-Cookie"]
-
-        if ($authorizationCookie.IndexOf(";") -gt 0)
-        {
-            $CookieString = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(";"));         
+#region functions
+function Resolve-HTTPError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
+            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
+            RequestUri            = $ErrorObject.TargetObject.RequestUri
+            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
+            ErrorMessage          = ''
         }
-    }
-}        
-# authenticate connection
-
-$webservicePath = 'j_security_check'
-$headers = @{
-    'Content-Type' = "application/x-www-form-urlencoded" 
-}
-if ($null -ne $CookieString) {
-    if ( $CookieString.length -gt 0) {
-        $headers = @{
-        'Content-Type' = "application/x-www-form-urlencoded" 
-        'Cookie' = $CookieString
-        }                       
-    }
-}
-$body = "&j_username=$($config.UserName)&j_password=$($config.Password)" 
-
-$splatWebRequestParameters = @{
-    Uri = $config.urlXMLSQL + $webservicePath
-    Method = 'Post'
-    Headers = $headers                
-    UseBasicParsing = $true
-    MaximumRedirection = 0    
-    Body = $body;     
-    WebSession = $curSession        
-}       
-if(-Not($offline -eq $true)) {
-    try{
-        $requestResult = Invoke-WebRequest @splatWebRequestParameters   -ErrorAction SilentlyContinue             
-    }
-    catch{
-        throw $_
-    }
-}
-else {
-    $requestResult = @{StatusCode = 302}                    
-}
-
-if ($requestResult.StatusCode -eq 302){
-    #authentication success
-}
-else {
-    $success = $false            
-    $auditMessage = "iprotect query for person " + $p.ExternalId + ". Authentication failed with error $($requestResult.StatusCode)";
-    $result = [PSCustomObject]@{ 
-        Success          = $success;
-        AccountReference = $aRef
-        AuditDetails     = $auditMessage;
-        Account          = $aRef; 
-    };            
-    #send result back
-    Write-Output $result | ConvertTo-Json -Depth 10
-    return; 
-}
-
-# execute query and fetch results       
-    
-$webservicePath = "xmlsql"
-$headers = @{
-    'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'          
-    'Cookie' = $CookieString                       
-}
-$splatWebRequestParameters = @{
-    Uri = $config.urlXMLSQL + $webservicePath
-    Method = 'Post'
-    Headers = $headers                
-    UseBasicParsing = $true  
-    MaximumRedirection = 0                
-    ContentType = 'text/xml;charset=ISO-8859-1' 
-    Body = $queryBody; 
-    WebSession = $curSession                
-}  
-
-if(-Not($offline -eq $true)){
-
-    try{
-        $queryRequestResult = Invoke-WebRequest @splatWebRequestParameters      
-    }
-    catch{
-        throw $_
-    }
-    
-
-    [xml] $IprotectDataxml = $queryRequestResult.Content  
-    $resultNode = $IprotectDataxml.item("RESULT")          
-    $nodePath = "ROWSET" 
-    $rowsetNode = $resultNode.SelectSingleNode($nodePath)
-
-    $nodePath = "ERROR"
-    $ErrorNode =  $resultNode.SelectSingleNode($NodePath) 
-    if ($null -ne $ErrorNode) {
-        $success = $false
-        $ErrorDescription = $ErrorNode.item("DESCRIPTION").FirstChild.Value
-        $ErrorNumber =   $ErrorNode.item("NUMBER").FirstChild.Value
-        $auditMessage = "iprotect query for person " + $p.ExternalId + " failed with error $ErrorNumber : $ErrorDescription";
-        $result = [PSCustomObject]@{ 
-            Success          = $success;
-            AccountReference = $aRef
-            AuditDetails     = $auditMessage;
-            Account          = $aRef; 
-        };            
-        #send result back
-        Write-Output $result | ConvertTo-Json -Depth 10
-        return; 
-    }      
-    
-    if ($null -ne $rowsetNode) {
-        $nodePath = "ROW"
-        $rowNodes = $rowsetNode.SelectNodes($nodePath)
-        foreach($rowNode in $rowNodes)
-        {
-            $curObject = @{
-                PERSONID = $rowNode.item("PERSON_ID").FirstChild.Value
-                PERSONNAME = $rowNode.item("PERSON_NAME").FirstChild.Value
-                SALARYNR =  $rowNode.item("EMPLOYEE_SALARYNR").FirstChild.Value
-                ACCESSKEYID =  $rowNode.item("ACCESS_KEY_ID").FirstChild.Value  
-                RCN =  $rowNode.item("ACCESS_KEYRCN").FirstChild.Value  
-                VALID =  $rowNode.item("ACCESS_KEY_VALID").FirstChild.Value
-            }  
-            if($curObject.SALARYNR -eq $aRef.EmployeeSalaryNR)
-            {                       
-                $accesskeyIdList += $curObject.ACCESSKEYID 
-            }                       
-        }
-    }
-}
-else {
-    $dummyAccesskeyId = "9999999999"
-    $accesskeyIdList += $dummyAccesskeyId            
-}
-#close the session
-
-$webservicePath = "xmlsql"
-$headers = @{
-    'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'          
-    'Cookie' = $CookieString                       
-}
-$body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><LOGOUT></LOGOUT>";
-$splatWebRequestParameters = @{
-    Uri = $config.urlXMLSQL + $webservicePath
-    Method = 'Post'
-    Headers = $headers                
-    UseBasicParsing = $true              
-    ContentType = 'text/xml;charset=ISO-8859-1' 
-    Body = $body; 
-    WebSession = $curSession                
-} 
-
-if(-Not($offline -eq $true)){
-
-
-    try{
-        $requestResult = Invoke-WebRequest @splatWebRequestParameters  -ErrorAction SilentlyContinue  
-    }
-    catch{
-        throw $_
-    }
-}
-
-#  Now in $accesskeyIdList we have collected the  accesskeys that must be disabled/enabled
-#  next actually disable the keys in the list.
-
-foreach ($accesskeyId in  $accesskeyIdList){
-    if ($Enable){
-        $query = "UPDATE accesskey SET valid = 1 WHERE ACCESSKEYID =$accesskeyId"
-    }
-    else {
-        $query = "UPDATE accesskey SET valid = 0 WHERE ACCESSKEYID =$accesskeyId"                
-    }						
-
-    $queryType = 'update'
-    switch ($queryType)
-    {
-        'query' {  $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>"}                
-        'update' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>"}                 
-    }
-
-    $splatWebRequestParameters = @{
-        Uri = $config.urlXMLSQL + $webservicePath
-        Method = 'Post'
-        Headers = $headers                
-        UseBasicParsing = $true
-        TimeoutSec = 60 
-        MaximumRedirection = 0    
-        Body = $queryBody;
-        SessionVariable = 'curSession'
-    } 
-    
-    if(-Not($offline -eq $true)) {
-
-        try{
-            $requestResult = Invoke-WebRequest @splatWebRequestParameters  -ErrorAction SilentlyContinue
-        }
-        catch{
-            throw $_
-        } 
-    }
-    else 
-    {
-        $headers = @{ "Set-Cookie" = "dummycookie;blabla"}
-        $requestResult = @{ Headers = $headers}
-    }
-
-    if($null -ne $requestResult.Headers) {
-        if ($null -ne $requestResult.Headers["Set-Cookie"] ) {
-            $authorizationCookie = $requestResult.Headers["Set-Cookie"]
-
-            if ($authorizationCookie.IndexOf(";") -gt 0)
-            {
-                $CookieString = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(";"));
-              
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -eq $ErrorObject.Exception.Response) {
+                $httpErrorObj.ErrorMessage = $ErrorObject.Exception.Message
+            } else {
+                $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
             }
         }
-    }        
-    # authenticate connection
-    $webservicePath = 'j_security_check'
+        Write-Output $httpErrorObj
+    }
+}
+
+function Get-JSessionID {
+    [CmdletBinding()]
+    param (
+    )
+
+    $splatParams = @{
+        Uri                = "$($config.BaseUrl)/xmlsql"
+        Method             = 'Post'
+        Headers            = @{'Content-Type' = "application/x-www-form-urlencoded" }
+        UseBasicParsing    = $true
+        TimeoutSec         = 60
+        MaximumRedirection = 0
+        SessionVariable    = 'script:WebSession'
+    }
+
+    if ($config.ProxyAddress) {
+        $splatParams['Proxy'] = $config.ProxyAddress
+    }
+
+    try {
+        $requestResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue -Verbose:$false
+        if ($null -ne $requestResult.Headers) {
+            if ($null -ne $requestResult.Headers['Set-Cookie'] ) {
+                $authorizationCookie = $requestResult.Headers['Set-Cookie']
+
+                if ($authorizationCookie.IndexOf(';') -gt 0) {
+                    $jsessionId = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(';'));
+                }
+            }
+        }
+        Write-Output $jsessionId
+    } catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
+function Get-AuthenticationResult {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]
+        $JSessionID
+    )
+
+    $splatParams = @{
+        Uri                = "$($config.BaseUrl)/j_security_check"
+        Method             = 'POST'
+        Headers            = @{'Content-Type' = 'application/x-www-form-urlencoded'; 'Cookie' = $JSessionID }
+        UseBasicParsing    = $true
+        MaximumRedirection = 0
+        Body               = "&j_username=$($config.UserName)&j_password=$($config.Password)"
+        WebSession         = $script:WebSession
+    }
+    try {
+        Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue -Verbose:$false
+    } catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
+function Invoke-IProtectQuery {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]
+        $JSessionID,
+
+        [Parameter(Mandatory)]
+        [string]
+        $Query,
+
+        [Parameter(Mandatory)]
+        [string]
+        $QueryType
+    )
+
+    switch ($QueryType) {
+        'query' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>" }
+        'update' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>" }
+    }
+
+    $splatParams = @{
+        Uri                = "$($config.BaseUrl)/xmlsql"
+        Method             = 'POST'
+        Headers            = @{'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'; 'Cookie' = $JSessionID }
+        UseBasicParsing    = $true
+        MaximumRedirection = 0
+        ContentType        = 'text/xml;charset=ISO-8859-1'
+        Body               = $queryBody;
+        WebSession         = $script:WebSession
+    }
+    if ($config.ProxyServer) {
+        $splatParams['Proxy'] = $config.ProxyServer
+    }
+
+    try {
+        $queryResult = Invoke-WebRequest @splatParams -Verbose:$false
+        switch ($queryType) {
+            'query' {
+                [xml] $xmlResult = $queryResult.Content
+                $resultNode = $xmlResult.item('RESULT')
+                $nodePath = 'ROWSET'
+                $rowsetNode = $resultNode.SelectSingleNode($nodePath)
+
+                $nodePath = 'ERROR'
+                $errorNode = $resultNode.SelectSingleNode($nodePath)
+
+                if ($null -ne $errorNode) {
+                    throw "Could not query record. Error: $($errorNode.DESCRIPTION)";
+                }
+
+                if ($null -ne $rowsetNode) {
+                    $nodePath = 'ROW'
+                    $rowNodes = $rowsetNode.SelectNodes($nodePath)
+                    if ((-not ($null -eq $rowNodes) -and ($rowNodes.Count -gt 0))) {
+                        Write-Output $rowNodes
+                    } else {
+                        Write-Output $null
+                    }
+                }
+            }
+            'update' {
+                [xml] $xmlResult = $queryResult.Content
+                $resultNode = $xmlResult.item('RESULT')
+                $errorNode = $resultNode.SelectSingleNode('ERROR')
+                if ($null -ne $errorNode) {
+                    throw "Could not update record. Error: $($errorNode.DESCRIPTION)"
+                }
+                Write-Output $resultNode
+            }
+        }
+    } catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
+function Invoke-Logout {
+    [CmdletBinding()]
+    param ()
+
     $headers = @{
-        'Content-Type' = "application/x-www-form-urlencoded" 
-    }
-    if ($null -ne $CookieString) {
-        if ( $CookieString.length -gt 0) {
-            $headers = @{
-            'Content-Type' = "application/x-www-form-urlencoded" 
-            'Cookie' = $CookieString
-            }                       
-        }
-    }
-
-    $body = "&j_username=$($config.UserName)&j_password=$($config.Password)" 
-    
-    $splatWebRequestParameters = @{
-        Uri = $config.urlXMLSQL + $webservicePath
-        Method = 'Post'
-        Headers = $headers                
-        UseBasicParsing = $true
-        MaximumRedirection = 0    
-        Body = $body;     
-        WebSession = $curSession        
-    }       
-    if(-Not($offline -eq $true)) {
-        try{
-            $requestResult = Invoke-WebRequest @splatWebRequestParameters    -ErrorAction SilentlyContinue            
-        }
-        catch{
-            throw $_
-        }
-    }
-    else {
-        $requestResult = @{StatusCode = 302}                    
-    }
-
-    if ($requestResult.StatusCode -eq 302){
-        #authentication success
-    }
-    else {
-        $success = $false            
-        $auditMessage = "iprotect query for person " + $p.ExternalId + ". Authentication failed with error $($requestResult.StatusCode)";
-        $result = [PSCustomObject]@{ 
-            Success          = $success;
-            AccountReference = $aRef
-            AuditDetails     = $auditMessage;
-            Account          = $aRef; 
-        };            
-        #send result back
-        Write-Output $result | ConvertTo-Json -Depth 10
-        return; 
-    }
-
-    # execute query and fetch results
-    
-        
-    $webservicePath = "xmlsql"
-    $headers = @{
-        'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'          
-        'Cookie' = $CookieString                       
-    }
-    $splatWebRequestParameters = @{
-        Uri = $config.urlXMLSQL + $webservicePath
-        Method = 'Post'
-        Headers = $headers                
-        UseBasicParsing = $true  
-        MaximumRedirection = 0                
-        ContentType = 'text/xml;charset=ISO-8859-1' 
-        Body = $queryBody; 
-        WebSession = $curSession                
-    }             
-    if(-Not($dR -eq $true)){
-
-        try{
-            $queryRequestResult = Invoke-WebRequest @splatWebRequestParameters      
-        }
-        catch{
-            throw $_
-        }     
-
-        [xml] $IprotectDataxml = $queryRequestResult.Content  
-        $resultNode = $IprotectDataxml.item("RESULT")          
-        
-        $nodePath = "ERROR"
-        $ErrorNode =  $resultNode.SelectSingleNode($NodePath) 
-        if ($null -ne $ErrorNode) {
-            $success = $false
-            $ErrorDescription = $ErrorNode.item("DESCRIPTION").FirstChild.Value
-            $ErrorNumber =   $ErrorNode.item("NUMBER").FirstChild.Value
-            $auditMessage = "iprotect query for person " + $p.ExternalId + " failed with error $ErrorNumber : $ErrorDescription";
-            $result = [PSCustomObject]@{ 
-                Success          = $success;
-                AccountReference = $aRef
-                AuditDetails     = $auditMessage;
-                Account          = $aRef; 
-            };            
-            #send result back
-            Write-Output $result | ConvertTo-Json -Depth 10
-            return;  
-
-        }  
-    }             
-    
-    #close the session
-
-    $webservicePath = "xmlsql"
-    $headers = @{
-        'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'          
-        'Cookie' = $CookieString                       
+        'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'
+        'Cookie' = $JSessionID
     }
     $body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><LOGOUT></LOGOUT>";
     $splatWebRequestParameters = @{
-        Uri = $config.urlXMLSQL + $webservicePath
-        Method = 'Post'
-        Headers = $headers                
-        UseBasicParsing = $true              
-        ContentType = 'text/xml;charset=ISO-8859-1' 
-        Body = $body; 
-        WebSession = $curSession                
-    } 
-    if(-Not($offline -eq $true)){
-        try{
-            $requestResult = Invoke-WebRequest @splatWebRequestParameters      
-        }
-        catch{
-            throw $_
-        }
+        Uri             = $config.BaseUrl + "/xmlsql"
+        Method          = 'Post'
+        Headers         = $headers
+        UseBasicParsing = $true
+        ContentType     = 'text/xml;charset=ISO-8859-1'
+        Body            = $body;
+        WebSession      = $script:WebSession
+    }
+
+    if (-not  [string]::IsNullOrEmpty($config.ProxyAddress)) {
+        $splatWebRequestParameters['Proxy'] = $config.ProxyAddress
+    }
+
+    try {
+        Invoke-WebRequest @splatWebRequestParameters -Verbose:$false  -ErrorAction SilentlyContinue
+    } catch {
+        # logout failure is not critical, so only log "
+        $errorMessage = "Warning, Iprotect logout failed error: $($_)"
+        Write-Verbose $errorMessage
+        $auditLogs.Add([PSCustomObject]@{
+                Message = $errorMessage
+                IsError = $false
+            })
+
     }
 }
+#endregion
 
-$success = $true
-$auditMessage = "iprotect account disable for person " + $p.ExternalId + " succeeded";    
-$result = [PSCustomObject]@{ 
-    Success          = $success;
-    AccountReference = $aRef
-    AuditDetails     = $auditMessage;   
-    Account          = $aRef;         
-};
+try {
+    $jSessionID = Get-JSessionID
+    $authenicationResult = Get-AuthenticationResult -JSessionID $jSessionID
 
-#send result back
-Write-Output $result | ConvertTo-Json -Depth 10
+    if (-Not ($authenicationResult.StatusCode -eq 302)) {
+        $success = $false
+        throw "Authentication failed. Error code: [$($authenicationResult.StatusCode)]"
+    }
 
+    # Add an auditMessage showing what will happen during enforcement
+    if ($dryRun -eq $true) {
+        $auditLogs.Add([PSCustomObject]@{
+                Message = "Disabling accessKeyId [$($aRef.AccessKeyId)] for [$($p.DisplayName)] will be executed during enforcement"
+            })
+    }
 
-   
-    
+    if (-not($dryRun -eq $true)) {
+        Write-Verbose "Disabling iProtect accessKey [$($aRef.AccessKeyId)]"
+        $query = "UPDATE accesskey SET VALID = 0 WHERE ACCESSKEYID = $($aRef.AccessKeyId)"
+        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update'
+        $auditLogs.Add([PSCustomObject]@{
+                Message = "AccessKey with ID [$($aRef.AccessKeyId)] was successfully disabled"
+                IsError = $false
+            })
+        $success = $true
+    }
+} catch {
+    $success = $false
+    $ex = $PSItem
+    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-HTTPError -ErrorObject $ex
+        $errorMessage = "Could not disable iProtect accessKey. Error: $($errorObj.ErrorMessage)"
+    } else {
+        $errorMessage = "Could not disable iProtect accessKey. Error: $($ex.Exception.Message)"
+    }
+    Write-Verbose $errorMessage
+    $auditLogs.Add([PSCustomObject]@{
+            Message = $errorMessage
+            IsError = $true
+        })
+} finally {
+    if ($null -ne $script:WebSession) {
+        $null = Invoke-logout
+    }
+    $result = [PSCustomObject]@{
+        Success   = $success
+        Auditlogs = $auditLogs
+    }
+    Write-Output $result | ConvertTo-Json -Depth 10
+}

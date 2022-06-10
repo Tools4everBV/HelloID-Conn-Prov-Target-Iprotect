@@ -1,43 +1,52 @@
 [
     {
-        "key": "UrlUser",
+        "key": "UserName",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
-            "label": "USER web service URL",
-            "placeholder": "https://<ip>:<port>/Webcontrols/automated/import",
+            "label": "UserName",
+            "description": "The UserName to connect to the API",
             "required": true
         }
     },
     {
-        "key": "UrlXMLSQL",
+        "key": "Password",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
-            "label": "XMLSQL web service URL",
-            "placeholder": "https://<ip>:<port>/Webcontrols",
+            "type": "password",
+            "label": "Password",
             "required": true
         }
     },
     {
-        "key": "Username",
+        "key": "BaseUrl",
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
-            "label": "User name",
-            "placeholder": "Please enter user name",
+            "label": "BaseUrl",
+            "description": "The URL to the API.",
             "required": true
         }
     },
     {
-      "key": "Password",
-      "type": "input",
-      "defaultValue": "",
-      "templateOptions": {
-        "label": "Password",
-        "type": "password",
-        "placeholder": "Please enter a password",
-        "required": true
-      }
-    }   
-  ]
+        "key": "IsDebug",
+        "type": "checkbox",
+        "defaultValue": true,
+        "templateOptions": {
+          "label": "Toggle debug logging",
+          "description": "When toggled, debug logging will be displayed",
+          "required": false
+        }
+    },
+    {
+        "key": "ProxyAddress",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+          "label": "Proxy address",
+          "placeholder": "http://localhost:8888",
+          "required": false
+        }
+      } 
+]

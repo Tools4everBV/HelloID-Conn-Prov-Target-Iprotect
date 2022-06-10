@@ -1,13 +1,12 @@
 #####################################################
-# HelloID-Conn-Prov-Target-Iprotect-Entitlement-KeyGroupGrant
+# HelloID-Conn-Prov-Target-iProtect-Enable
 #
 # Version: 2.0.0
 #####################################################
 # Initialize default values
 $config = $configuration | ConvertFrom-Json
 $p = $person | ConvertFrom-Json
-$aRef = $AccountReference | ConvertFrom-Json
-$pRef = $permissionReference | ConvertFrom-Json
+$aRef = $accountReference | ConvertFrom-Json
 $success = $false
 $auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -21,16 +20,46 @@ switch ($($config.IsDebug)) {
 }
 
 #region functions
+function Resolve-HTTPError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
+            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
+            RequestUri            = $ErrorObject.TargetObject.RequestUri
+            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
+            ErrorMessage          = ''
+        }
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -eq $ErrorObject.Exception.Response) {
+                $httpErrorObj.ErrorMessage = $ErrorObject.Exception.Message
+            } else {
+                $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+            }
+        }
+        Write-Output $httpErrorObj
+    }
+}
+
 function Get-JSessionID {
     [CmdletBinding()]
     param (
     )
+
     $splatParams = @{
         Uri                = "$($config.BaseUrl)/xmlsql"
         Method             = 'Post'
-        Headers            = @{'Content-Type' = 'application/x-www-form-urlencoded' }
+        Headers            = @{'Content-Type' = "application/x-www-form-urlencoded" }
         UseBasicParsing    = $true
-        TimeoutSec         = 6000
+        TimeoutSec         = 60
         MaximumRedirection = 0
         SessionVariable    = 'script:WebSession'
     }
@@ -52,8 +81,6 @@ function Get-JSessionID {
         }
         Write-Output $jsessionId
     } catch {
-        Write-Verbose "$($_.Exception.Message)" -Verbose
-        Write-Verbose "$($_.Exception.InnerException.Message)" -Verbose
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -95,11 +122,7 @@ function Invoke-IProtectQuery {
 
         [Parameter(Mandatory)]
         [string]
-        $QueryType,
-
-        [Parameter(Mandatory = $false)]
-        [string]
-        $QueryDescription
+        $QueryType
     )
 
     switch ($QueryType) {
@@ -117,8 +140,8 @@ function Invoke-IProtectQuery {
         Body               = $queryBody;
         WebSession         = $script:WebSession
     }
-    if ($config.ProxyAddress) {
-        $splatParams['Proxy'] = $config.ProxyAddress
+    if ($config.ProxyServer) {
+        $splatParams['Proxy'] = $config.ProxyServer
     }
 
     try {
@@ -126,7 +149,6 @@ function Invoke-IProtectQuery {
         switch ($queryType) {
             'query' {
                 [xml] $xmlResult = $queryResult.Content
-                # $resultNode = $xmlResult.RESULT
                 $resultNode = $xmlResult.item('RESULT')
                 $nodePath = 'ROWSET'
                 $rowsetNode = $resultNode.SelectSingleNode($nodePath)
@@ -135,9 +157,7 @@ function Invoke-IProtectQuery {
                 $errorNode = $resultNode.SelectSingleNode($nodePath)
 
                 if ($null -ne $errorNode) {
-                    $errorDescription = $ErrorNode.DESCRIPTION
-                    $errorMessage = "Could not Invoke-IProtectQuery: $QueryDescription. Error: $errorDescription"
-                    throw $errorMessage
+                    throw = "Could not query record. Error: $($errorNode.DESCRIPTION)";
                 }
 
                 if ($null -ne $rowsetNode) {
@@ -153,9 +173,9 @@ function Invoke-IProtectQuery {
             'update' {
                 [xml] $xmlResult = $queryResult.Content
                 $resultNode = $xmlResult.item('RESULT')
-                $errorNode = $resultNode.SelectSingleNode("ERROR")
+                $errorNode = $resultNode.SelectSingleNode('ERROR')
                 if ($null -ne $errorNode) {
-                    throw "Could not Invoke-IProtectQuery. $QueryDescription. Error: $($errorNode.DESCRIPTION)";
+                    throw "Could not update record. Error: $($errorNode.DESCRIPTION)"
                 }
                 Write-Output $resultNode
             }
@@ -201,75 +221,43 @@ function Invoke-Logout {
 
     }
 }
-function Resolve-HTTPError {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
-        }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            if ($ErrorObject.Exception.Response) {
-                $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-            } else {
-                $httpErrorObj.ErrorMessage = "$($ErrorObject.Exception.Message) $($ErrorObject.Exception.InnerException.Message)".trim(" ")
-            }
-        }
-        Write-Output $httpErrorObj
-    }
-}
 #endregion
 
 try {
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true) {
-        $auditLogs.Add([PSCustomObject]@{
-                Message = "Grant Iprotect entitlement: [$($pRef.DisplayName)] to: [$($p.DisplayName)] will be executed during enforcement"
-            })
-    }
     $jSessionID = Get-JSessionID
     $authenicationResult = Get-AuthenticationResult -JSessionID $jSessionID
 
     if (-Not ($authenicationResult.StatusCode -eq 302)) {
-        throw  "Authentication failed with error $($authenicationResult.StatusCode)";
+        $success = $false
+        throw "Authentication failed. Error code: [$($authenicationResult.StatusCode)]"
+    }
+
+    # Add an auditMessage showing what will happen during enforcement
+    if ($dryRun -eq $true) {
+        $auditLogs.Add([PSCustomObject]@{
+            Message = "Enabling accessKeyId [$($aRef.AccessKeyId)] for [$($p.DisplayName)] will be executed during enforcement"
+        })
     }
 
     if (-not($dryRun -eq $true)) {
-        Write-Verbose "Granting Iprotect entitlement: [$($pRef.DisplayName)]"
-        try {
-            $insertQuery = "INSERT INTO keykeygroup (accesskeyid, keygroupid) VALUES ($($aRef.AccessKeyId), $($pref.Reference))"
-            $result = Invoke-IProtectQuery -JSessionID $jSessionID -Query $insertQuery -QueryType 'Update'
-        } catch {
-            if (-not $_.Exception.Message.contains('already exists')) {
-                throw $_
-            }
-        }
+        Write-Verbose "Enabling iProtect accessKey [$($aRef.AccessKeyId)]"
+        $query = "UPDATE accesskey SET VALID = 1 WHERE ACCESSKEYID = $($aRef.AccessKeyId)"
+        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update'
         $auditLogs.Add([PSCustomObject]@{
-                Message = "Grant Iprotect entitlement: [$($pRef.DisplayName)] was successful, ACCESS_KEY_ID Added: [$($($aRef.AccessKeyId))]"
-                IsError = $false
-            })
+            Message = "AccessKey with ID [$($aRef.AccessKeyId)] was successfully enabled"
+            IsError = $false
+        })
+        $success = $true
     }
-    $success = $true
 } catch {
     $success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not grant Iprotect entitlement: [$($pRef.DisplayName)]. Error: $($errorObj.ErrorMessage)"
+        $errorMessage = "Could not enable iProtect accessKey. Error: $($errorObj.ErrorMessage)"
     } else {
-        $errorMessage = "Could not grant Iprotect entitlement: [$($pRef.DisplayName)]. Error: $($ex.Exception.Message)"
+        $errorMessage = "Could not enable iProtect accessKey. Error: $($ex.Exception.Message)"
     }
     Write-Verbose $errorMessage
     $auditLogs.Add([PSCustomObject]@{
