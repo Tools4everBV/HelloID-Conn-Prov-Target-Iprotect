@@ -99,7 +99,7 @@ Note! The custom properties HasAccessKey and HasLicensePlate are required for th
 - HelloID session management must be configured so that only one action at a time is allowed. This is because a logout action may logout all connected sessions.
 - The connector should be run from a local povisioning agent.
 
-## Description of the available ps1 scripts\
+## Description of the available ps1 scripts
 
 ### Create.ps1
  - Creates or correlates a new employee. Expects the salaryNR as the ExternalID used for the correlation.
