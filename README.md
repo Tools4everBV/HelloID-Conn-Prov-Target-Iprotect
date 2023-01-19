@@ -45,7 +45,7 @@ This is a complete overhaul of the previous connector.
 It is not compatible with the previous version.
 
 Main Changes are:
-1) No longer uses the xml-import interface for the create, update and delete of accounts, but the genera xmlsql interface instead.
+1) No longer uses the xml-import interface for the create, update and delete of accounts, but the general xmlsql interface instead.
 2) Implemented the management of Accesskeys and Licenseplates in the user cycle actions.
 
 
