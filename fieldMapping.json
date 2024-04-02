@@ -1,0 +1,399 @@
+{
+  "Version": "v1",
+  "MappingFields": [
+    {
+      "Name": "KeyCard.CARDCLASSID",
+      "Description": "Note: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"2\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "KeyCard.OFFICE",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!\nHRO aangepast 26-5-2021: Office modus toegevoegd",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Employee.SALARYNR",
+      "Description": "[Required] Used for correlation\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Custom.profitEmId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.CARDCLASSID",
+      "Description": "Note: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"6\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.OFFICE",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!\n#HRO aangepast 26-5-2021: Office modus toegevoegd",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"0\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.UNLIMITED",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "KeyCard.VALID",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Enable"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Disable"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"0\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "KeyCard.UNLIMITED",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.VALID",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Enable"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Disable"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"0\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.RCN",
+      "Description": "Note: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonFirstName according to the following convention.\\r\\nfunction generateLicensePlateRCN() {\\r\\n    let licensePlateRCN = Person.Custom.kenteken;\\r\\n\\r\\n    if (typeof licensePlateRCN !== 'undefined' && licensePlateRCN) {\\r\\n        // Remove -\\r\\n        licensePlateRCN = licensePlateRCN.replaceAll('-', '');\\r\\n\\r\\n        // Add countrycode\\r\\n        licensePlateRCN = 'NLD,' + licensePlateRCN;\\r\\n        \\r\\n        // Trim spaces at start and end\\r\\n        licensePlateRCN = licensePlateRCN.trim();\\r\\n\\r\\n        // Remove diacritical chars\\r\\n        licensePlateRCN = deleteDiacriticalMarks(licensePlateRCN);\\r\\n    }\\r\\n\\r\\n    return licensePlateRCN;\\r\\n}\\r\\n\\r\\ngenerateLicensePlateRCN();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "KeyCard.RCN",
+      "Description": "Note: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Custom.kaartnummer\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.FIRSTNAME",
+      "Description": "[Required] Used for correlation\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonFirstName according to the following convention.\\r\\nfunction generatePersonFirstName() {\\r\\n    let personFirstName = Person.Name.NickName;\\r\\n\\r\\n    // Trim spaces at start and end\\r\\n    personFirstName = personFirstName.trim();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    personFirstName = deleteDiacriticalMarks(personFirstName);\\r\\n\\r\\n    return personFirstName;\\r\\n}\\r\\n\\r\\ngeneratePersonFirstName();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.NAME",
+      "Description": "[Required] Used for correlation\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonName according to the following convention.\\r\\n// First choice\\t        B\\tvan den boele\\r\\n// \\t                    BP\\tvan den boele\\r\\n// \\t                    P\\tde Vries\\r\\n// \\t                    PB  van den boele\\r\\nfunction generatePersonName() {\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let personName = '';\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n            personName = personName + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            personName = personName + lastName;\\r\\n            break;\\r\\n    }\\r\\n    // Trim spaces at start and end\\r\\n    personName = personName.trim();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    personName = deleteDiacriticalMarks(personName);\\r\\n\\r\\n    return personName;\\r\\n}\\r\\n\\r\\ngeneratePersonName();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.PREFIX",
+      "Description": "[Optional]\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonPrefix according to the following convention.\\r\\n// First choice\\t        B\\tvan den\\r\\n// \\t                    BP\\tvan den\\r\\n// \\t                    P\\tde Vries\\r\\n// \\t                    PB  van den\\r\\nfunction generatePersonPrefix() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let personPrefix = '';\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n            personPrefix = personPrefix + middleNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            personPrefix = personPrefix + middleName;\\r\\n            break;\\r\\n    }\\r\\n    // Trim spaces at start and end\\r\\n    personPrefix = personPrefix.trim();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    personPrefix = deleteDiacriticalMarks(personPrefix);\\r\\n\\r\\n    return personPrefix;\\r\\n}\\r\\n\\r\\ngeneratePersonPrefix();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.PERSONID",
+      "Description": "[Required] Set within script\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "KeyCard.PERSONID",
+      "Description": "[Required] Set within script\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Employee.PERSONID",
+      "Description": "[Required] Set within script\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.PERSONID",
+      "Description": "[Required] Used as AccountReference\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Employee.EMPLOYEEID",
+      "Description": "[Required] Used as AccountReference\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.ACCESSKEYID",
+      "Description": "[Required] Used as AccountReference\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "KeyCard.ACCESSKEYID",
+      "Description": "[Required] Used as AccountReference\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    }
+  ],
+  "UniqueFieldNames": []
+}

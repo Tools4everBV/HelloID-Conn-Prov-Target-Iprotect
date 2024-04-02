@@ -1,81 +1,148 @@
-#####################################################
-# HelloID-Conn-Prov-Target-Iprotect-Create
-#
-# Version: 2.0.0
-#####################################################
-# Initialize default values
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
-
-# The type of the accesskeys and License Plates differs between Iprotect implementations
-$script:AccessKeyCardClassId = '2'
-$script:LicensePlateCardClassID = '6'
-
-$account = [PSCustomObject]@{
-    EmployeeSalaryNR        = $p.ExternalId
-    EmployeeHireDate        = $p.PrimaryContract.StartDate  # "yyyy-MM-dd HH:mm:ss"
-    EmployeeTerminationDate = $p.PrimaryContract.endDate
-    EmployeeBirthDate       = ""
-    EmployeeLanguage        = "1"
-    PersonName              = $p.UserName
-    PersonFirstName         = $p.Name.GivenName
-    PersonPrefix            = $p.Name.Initials
-    PersonHomeAddress       = ""
-    PersonHomeCity          = ""
-    PersonHomeZip           = ""
-    AccessKeyIsActive       = 0                             # 0 = False, 1 = true
-    AccessKeyRCN            = $p.Custom.AccessKeyRCN
-    LicensePlateRCN         = $p.Custom.LicensePlateRCN
-    CountryCodeLicensePlate = 'NLD'                         #'NLD' | 'BEL'
-}
-
+#################################################
+# HelloID-Conn-Prov-Target-iProtect-Create
+# PowerShell V2
+# Note: Due to the necessity of provisioning the person, the employee as well as the keycard and license plate, the correlation option in HelloID is not supported, as it only supports a single correlation field.
+#################################################
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 # Set debug logging
-switch ($($config.IsDebug)) {
-    $true { $VerbosePreference = 'Continue' }
-    $false { $VerbosePreference = 'SilentlyContinue' }
+switch ($actionContext.Configuration.isDebug) {
+    $true { $VerbosePreference = "Continue" }
+    $false { $VerbosePreference = "SilentlyContinue" }
 }
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
 
-# Set to true if the accounts in Iprotect must be updated and the mapped Accesskey and Licenseplate must be set
-[bool]$updatePerson = $true
+#region Person
+# Define Account mapping object
+$personAccount = [PSCustomObject]$actionContext.Data.Person
+
+# Define properties to enclose in specific characters
+# String values have to be enclosed in single quotes
+$personPropertiesToEncloseInSingleQuotes = @(
+    "NAME"
+    , "FIRSTNAME"
+    , "PREFIX"
+)
+# Date values have to be enclosed in hashtags
+$personPropertiesToEncloseInHashtags = @()
+
+# Define properties to query
+$personPropertiesToQuery = @("PERSONID") + $personAccount.PSObject.Properties.Name | Select-Object -Unique
+
+# Define properties to export
+$personPropertiesToExport = @("PERSONID") + $personAccount.PSObject.Properties.Name | Select-Object -Unique
+#endRegion Person
+
+#region Employee
+# Define Account mapping object
+$employeeAccount = [PSCustomObject]$actionContext.Data.Employee
+
+# Define properties to enclose in specific characters
+# String values have to be enclosed in single quotes
+$employeePropertiesToEncloseInSingleQuotes = @(
+    "SALARYNR"
+)
+# Date values have to be enclosed in hashtags
+$employeePropertiesToEncloseInHashtags = @(
+    "HireDate"
+    , "TerminationDate"
+    , "BirthDate"
+)
+
+# Define properties to query
+$employeePropertiesToQuery = @("EMPLOYEEID") + $employeeAccount.PSObject.Properties.Name | Select-Object -Unique
+
+# Define properties to export
+$employeePropertiesToExport = @("EMPLOYEEID") + $employeeAccount.PSObject.Properties.Name | Select-Object -Unique
+#endRegion Employee
+
+#region KeyCard
+# Define Account mapping object
+$keyCardAccount = [PSCustomObject]$actionContext.Data.KeyCard
+
+# Define properties to enclose in specific characters
+# String values have to be enclosed in single quotes
+$keyCardPropertiesToEncloseInSingleQuotes = @(
+    "RCN"
+)
+# Date values have to be enclosed in hashtags
+$keyCardPropertiesToEncloseInHashtags = @()
+
+# Define properties to query
+$keyCardPropertiesToQuery = @("ACCESSKEYID") + $keyCardAccount.PSObject.Properties.Name | Select-Object -Unique
+
+# Define properties to export
+$keyCardPropertiesToExport = @("ACCESSKEYID") + $keyCardAccount.PSObject.Properties.Name | Select-Object -Unique
+#endRegion KeyCard
+
+#region LicensePlate
+# Define Account mapping object
+$licensePlateAccount = [PSCustomObject]$actionContext.Data.LicensePlate
+
+# Define properties to enclose in specific characters
+# String values have to be enclosed in single quotes
+$licensePlatePropertiesToEncloseInSingleQuotes = @(
+    "RCN"
+)
+# Date values have to be enclosed in hashtags
+$licensePlatePropertiesToEncloseInHashtags = @()
+
+# Define properties to query
+$licensePlatePropertiesToQuery = @("ACCESSKEYID") + $licensePlateAccount.PSObject.Properties.Name | Select-Object -Unique
+
+# Define properties to export
+$licensePlatePropertiesToExport = @("ACCESSKEYID") + $licensePlateAccount.PSObject.Properties.Name | Select-Object -Unique
+#endRegion LicensePlate
+
+# Create empty hashtable for AccountReference as this is appended with each action
+$outputContext.AccountReference = @{}
 
 #region functions
 function Get-JSessionID {
     [CmdletBinding()]
-    param ()
+    param (
+        [Parameter(Mandatory)]
+        [string]
+        $BaseUrl,
+
+        [Parameter(Mandatory = $false)]
+        [string]
+        $ProxyAddress
+    )
 
     $splatParams = @{
-        Uri                = "$($config.BaseUrl)/xmlsql"
-        Method             = 'Post'
-        Headers            = @{'Content-Type' = 'application/x-www-form-urlencoded' }
+        Uri                = "$BaseUrl/xmlsql"
+        Method             = "Post"
+        Headers            = @{
+            "Content-Type" = "application/x-www-form-urlencoded"
+        }
         UseBasicParsing    = $true
         TimeoutSec         = 60
         MaximumRedirection = 0
-        SessionVariable    = 'script:WebSession'
+        SessionVariable    = "script:WebSession"
     }
 
-    if ($config.ProxyAddress) {
-        $splatParams['Proxy'] = $config.ProxyAddress
+    if (-not[String]::IsNullOrEmpty($ProxyAddress)) {
+        $splatParams["Proxy"] = $ProxyAddress
     }
 
     try {
         $requestResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue -Verbose:$false
         if ($null -ne $requestResult.Headers) {
-            if ($null -ne $requestResult.Headers['Set-Cookie'] ) {
-                $authorizationCookie = $requestResult.Headers['Set-Cookie']
+            if ($null -ne $requestResult.Headers["Set-Cookie"] ) {
+                $authorizationCookie = $requestResult.Headers["Set-Cookie"]
 
-                if ($authorizationCookie.IndexOf(';') -gt 0) {
-                    $jsessionId = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(';'))
+                if ($authorizationCookie.IndexOf(";") -gt 0) {
+                    $jsessionId = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(";"))
                 }
             }
         }
         Write-Output $jsessionId
-    } catch {
-        $PSCmdlet.ThrowTerminatingError($_)
+    }
+    catch {
+        throw $_
     }
 }
 
@@ -84,22 +151,38 @@ function Get-AuthenticationResult {
     param (
         [Parameter(Mandatory)]
         [string]
-        $JSessionID
+        $BaseUrl,
+
+        [Parameter(Mandatory)]
+        [string]
+        $JSessionID,
+
+        [Parameter(Mandatory)]
+        [string]
+        $UserName,
+
+        [Parameter(Mandatory)]
+        [string]
+        $Password
     )
 
     $splatParams = @{
-        Uri                = "$($config.BaseUrl)/j_security_check"
-        Method             = 'POST'
-        Headers            = @{'Content-Type' = 'application/x-www-form-urlencoded'; 'Cookie' = $JSessionID }
+        Uri                = "$BaseUrl/j_security_check"
+        Method             = "POST"
+        Headers            = @{
+            "Content-Type" = "application/x-www-form-urlencoded"
+            "Cookie"       = $JSessionID
+        }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        Body               = "&j_username=$($config.UserName)&j_password=$($config.Password)"
+        Body               = "&j_username=$($UserName)&j_password=$($Password)"
         WebSession         = $script:WebSession
     }
     try {
         Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue -Verbose:$false
-    } catch {
-        $PSCmdlet.ThrowTerminatingError($_)
+    }
+    catch {
+        throw $_
     }
 }
 
@@ -108,11 +191,11 @@ function Invoke-IProtectQuery {
     param (
         [Parameter(Mandatory)]
         [string]
-        $JSessionID,
+        $BaseUrl,
 
         [Parameter(Mandatory)]
         [string]
-        $Query,
+        $JSessionID,
 
         [Parameter(Mandatory)]
         [string]
@@ -120,607 +203,1393 @@ function Invoke-IProtectQuery {
 
         [Parameter(Mandatory = $false)]
         [string]
-        $QueryDescription
+        $Query,
+
+        [Parameter(Mandatory = $false)]
+        [string]
+        $ProxyServer
     )
 
     switch ($QueryType) {
-        'query' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>" }
-        'update' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>" }
+        "query" { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>" }
+        "update" { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>" }
+        "logout" { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><LOGOUT></LOGOUT>" }
     }
-
     $splatParams = @{
-        Uri                = "$($config.BaseUrl)/xmlsql"
-        Method             = 'POST'
-        Headers            = @{'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'; 'Cookie' = $JSessionID }
+        Uri                = "$BaseUrl/xmlsql"
+        Method             = "POST"
+        Headers            = @{
+            "Accept" = "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2"
+            "Cookie" = $JSessionID
+        }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        ContentType        = 'text/xml;charset=ISO-8859-1'
+        ContentType        = "text/xml;charset=ISO-8859-1"
         Body               = $queryBody
         WebSession         = $script:WebSession
     }
-    if ($config.ProxyServer) {
-        $splatParams['Proxy'] = $config.ProxyServer
+
+    if (-not[String]::IsNullOrEmpty($ProxyServer)) {
+        $splatParams["Proxy"] = $ProxyServer
     }
 
     try {
         $queryResult = Invoke-WebRequest @splatParams -Verbose:$false
+        Write-Verbose "queryResult: $($queryResult | Out-String)"
         switch ($queryType) {
-            'query' {
+            "query" {
                 [xml] $xmlResult = $queryResult.Content
-                $resultNode = $xmlResult.item('RESULT')
-                $nodePath = 'ROWSET'
+                $resultNode = $xmlResult.item("RESULT")
+                $nodePath = "ROWSET"
                 $rowsetNode = $resultNode.SelectSingleNode($nodePath)
 
-                $nodePath = 'ERROR'
+                $nodePath = "ERROR"
                 $errorNode = $resultNode.SelectSingleNode($nodePath)
 
                 if ($null -ne $errorNode) {
-                    $errorDescription = $ErrorNode.DESCRIPTION
-                    $errorMessage = "Could not create iProtect account for person: [$($account.ExternalId)]. $QueryDescription. Error: $errorDescription"
-                    throw $errorMessage
+                    throw $ErrorNode.DESCRIPTION
                 }
 
                 if ($null -ne $rowsetNode) {
-                    $nodePath = 'ROW'
+                    $nodePath = "ROW"
                     $rowNodes = $rowsetNode.SelectNodes($nodePath)
                     if ((-not ($null -eq $rowNodes) -and ($rowNodes.Count -gt 0))) {
                         Write-Output $rowNodes
-                    } else {
+                    }
+                    else {
                         Write-Output $null
                     }
                 }
             }
-            'update' {
+            "update" {
                 [xml] $xmlResult = $queryResult.Content
-                $resultNode = $xmlResult.item('RESULT')
+                $resultNode = $xmlResult.item("RESULT")
                 $errorNode = $resultNode.SelectSingleNode("ERROR")
                 if ($null -ne $errorNode) {
-                    $errorMessage = "Could not create IProtect person account. $QueryDescription. Error: $($errorNode.DESCRIPTION)"
-                    Write-Verbose $errorMessage
-                    throw $errorMessage
+                    throw $ErrorNode.DESCRIPTION
                 }
                 Write-Output $resultNode
             }
         }
-    } catch {
-        $PSCmdlet.ThrowTerminatingError($_)
+    }
+    catch {
+        throw $_
     }
 }
+#endregion functions
 
-function New-EmployeeUpdateQuery {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [PSCustomObject] $Account,
-
-        [Parameter(Mandatory)]
-        [string] $EmployeeSalaryNR
-    )
-    $separatorRequired = $false
-
-    $query = "UPDATE EMPLOYEE SET"
-    if ( ![string]::IsNullOrEmpty($Account.EmployeeHireDate)) {
-        $query += " HireDate = "
-        $query += " `#"
-        $query += $Account.EmployeeHireDate
-        $query += "`#"
-        $separatorRequired = $true
-    }
-    if ( ![string]::IsNullOrEmpty($Account.EmployeeTerminationDate)) {
-        if ($separatorRequired) { $query += "," }
-        $query += " TerminationDate = "
-        $query += " `#"
-        $query += $Account.EmployeeTerminationDate
-        $query += "`#"
-        $separatorRequired = $true
-    }
-    if (  ![string]::IsNullOrEmpty($Account.EmployeeBirthDate)) {
-        if ($separatorRequired) { $query += "," }
-        $query += " BirthDate = "
-        $query += " `#"
-        $query += $Account.EmployeeBirthDate
-        $query += "`#"
-        $separatorRequired = $true
-    }
-    if ( ![string]::IsNullOrEmpty($Account.EmployeeLanguage)) {
-        if ($separatorRequired) { $query += "," }
-        $query += " Language = "
-        $query += $Account.EmployeeLanguage
-        $query += " "
-        $separatorRequired = $true
-    }
-    $query += " WHERE SALARYNR = `'"
-    $query += $EmployeeSalaryNR
-    $query += "`' "
-
-    if ($separatorRequired -eq $false) {
-        $query = ""
-    }
-    Write-Output $query
-}
-
-function New-PersonUpdateQuery {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [PSCustomObject] $Account,
-
-        [Parameter(Mandatory)]
-        [string] $PersonID
-    )
-
-    $separatorRequired = $false
-
-    $query = "UPDATE PERSON SET"
-
-    if ( ![string]::IsNullOrEmpty($Account.PersonFirstName)) {
-        $query += " FirstName = `'"
-        $query += $Account.PersonFirstName
-        $query += "`' "
-        $separatorRequired = $true
-    }
-    if ( ![string]::IsNullOrEmpty($Account.PersonPrefix)) {
-        if ($separatorRequired) { $query += "," }
-        $query += " Prefix = `'"
-        $query += $Account.PersonPrefix
-        $query += "`'"
-        $separatorRequired = $true
-    }
-    if (  ![string]::IsNullOrEmpty($Account.PersonHomeAddress)) {
-        if ($separatorRequired) { $query += "," }
-        $query += " HomeAddress = `'"
-        $query += $Account.PersonHomeAddress
-        $query += "`' "
-        $separatorRequired = $true
-    }
-    if ( ![string]::IsNullOrEmpty($Account.PersonHomeCity)) {
-        if ($separatorRequired) { $query += "," }
-        $query += " HomeCity = `'"
-        $query += $Account.PersonHomeCity
-        $query += "`' "
-        $separatorRequired = $true
-    }
-    $query += " WHERE PERSONID = $PersonID"
-
-    if ($separatorRequired -eq $false) {
-        $query = ""
-    }
-    Write-Output $query
-}
-
-function Invoke-Logout {
-    [CmdletBinding()]
-    param ()
-
-    $headers = @{
-        'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'
-        'Cookie' = $JSessionID
-    }
-    $body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><LOGOUT></LOGOUT>"
-    $splatWebRequestParameters = @{
-        Uri             = $config.BaseUrl + "/xmlsql"
-        Method          = 'Post'
-        Headers         = $headers
-        UseBasicParsing = $true
-        ContentType     = 'text/xml;charset=ISO-8859-1'
-        Body            = $body
-        WebSession      = $script:WebSession
-    }
-
-    if (-not  [string]::IsNullOrEmpty($config.ProxyAddress)) {
-        $splatWebRequestParameters['Proxy'] = $config.ProxyAddress
-    }
-
-    try {
-        Invoke-WebRequest @splatWebRequestParameters -Verbose:$false  -ErrorAction SilentlyContinue
-    } catch {
-        # logout failure is not critical, so only log "
-        $errorMessage = "Warning, Iprotect logout failed error: $($_)"
-        Write-Verbose $errorMessage
-        $auditLogs.Add([PSCustomObject]@{
-                Message = $errorMessage
-                IsError = $false
-            })
-
-    }
-}
-
-function Resolve-HTTPError {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
-        }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            if ($ErrorObject.Exception.Response) {
-                $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-            } else {
-                $httpErrorObj.ErrorMessage = "$($ErrorObject.Exception.Message) $($ErrorObject.Exception.InnerException.Message)".trim(" ")
-            }
-        }
-        Write-Output $httpErrorObj
-    }
-}
-
-function Invoke-IprotectAssignAccessKey {
-    [CmdletBinding()]
-    param(
-        [string]
-        $AccessKeyRCN,
-
-        [string]
-        $CardClassId,
-
-
-        [string]
-        $PersonId,
-
-        [ValidateSet(0, 1)]
-        [int]
-        $isActive,
-
-        [string]
-        $JSessionID
-    )
-    try {
-        $query = "SELECT ACCESSKEYID,CARDCLASSID,ENDDATE,PERSONID,RCN,VALID,VISITORID FROM Accesskey WHERE CARDCLASSID = $CardClassId AND RCN = '$AccessKeyRCN'"
-        $existingKey = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'query'
-
-        if ($null -ne $existingKey) {
-            if ((-not ([string]::IsNullorEmpty($existingKey.PersonId))) -and (-not ($existingKey.PersonId -eq $PersonId))) {
-                throw "The supplied Accesskey [$($AccessKeyRCN)] is already assigned to [$($existingKey.PersonId)]"
-            } elseif ($existingKey.PersonId -eq $PersonId) {
-                Write-Verbose "Correlated AccessKey Type [$CardClassId] RCN [$AccessKeyRCN] to Account [$PersonId]"
-            } else {
-                Write-Verbose  "Assign AccessKey Type [$CardClassId] RCN [$AccessKeyRCN]  to Account [$PersonId]"
-                $queryUpdate = "UPDATE Accesskey SET RCN = '$AccessKeyRCN', PERSONID = $PersonId  WHERE ACCESSKEYID = $($existingKey.ACCESSKEYID)"
-                $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryUpdate -QueryType 'update'
-            }
-            $accessKeyId = $existingKey.ACCESSKEYID
-        } else {
-            Write-Verbose "Assign and Create AccessKey Type [$CardClassId] RCN [$($AccessKeyRCN)] to Account [$PersonId]"
-            $queryCreate = "INSERT INTO Accesskey (CARDCLASSID,PERSONID,RCN,VALID) VALUES ($CardClassId, $($PersonId), '$($AccessKeyRCN)', $isActive)"
-            $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryCreate -QueryType 'update'
-
-            # Get AccessKeyId
-            $queryGet = "SELECT ACCESSKEYID,CARDCLASSID,ENDDATE,PERSONID,RCN,VALID,VISITORID FROM Accesskey WHERE CARDCLASSID = $CardClassId AND RCN = '$($AccessKeyRCN)'"
-            $accessKey = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryGet -QueryType 'query'
-            if ($null -eq $accessKey)
-            {
-                throw "The allegedly just created Accesskey with RCN [$($AccessKeyRCN)] cannot be found in the database]"
-            }
-            $accessKeyId = $accessKey.ACCESSKEYID
-
-        }
-        Write-Output $accessKeyId
-    } catch {
-        $PSCmdlet.ThrowTerminatingError($_)
-    }
-}
-#endregion
-
-# Begin
 try {
-    # Verify if a user must be either [created and correlated], [updated and correlated] or just [correlated]
-    $EmployeeExists = $false
-    $action = 'Lookup'
-
-    Write-Verbose 'Getting Get-JSessionID'
-    $jSessionID = Get-JSessionID
-    Write-Verbose 'Authenticate with the IProtect'
-    $authenicationResult = Get-AuthenticationResult -JSessionID $jSessionID
-
-    if (-Not ($authenicationResult.StatusCode -eq 302)) {
-        $success = $false
-        $ErrorMessage = "Iprotect query for person [$($p.ExternalId)]. Authentication failed with error [$($authenicationResult.StatusCode)]"
-        throw $ErrorMessage
-    } else {
-        Write-Verbose 'Successfully Authenticated'
-    }
-
-    Write-Verbose "Query if there is already an Employee with the specified EmployeeSalaryNR"
-    $query = "SELECT
-    TABLEEMPLOYEE.PERSONID as person_id,
-    TABLEPERSON.NAME as person_name,
-    TABLEEMPLOYEE.EMPLOYEEID as employee_id,
-    TABLEEMPLOYEE.SALARYNR as employee_salarynr
-    FROM employee TABLEEMPLOYEE
-    LEFT OUTER JOIN person TABLEPERSON ON TABLEPERSON.personID = TABLEEMPLOYEE.personID
-    WHERE TABLEEMPLOYEE.SALARYNR = "
-    $query += "`'"
-    $query += $account.EmployeeSalaryNR
-    $query += "`'"
-
-
-    $QueryDescription = "Finding Employee with EmployeeSalaryNR [$($account.EmployeeSalaryNR)]"
-    Write-Verbose $QueryDescription
-    $RowNodes = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "query" -QueryDescription $QueryDescription
-    foreach ($rowNode in $rowNodes) {
-        $curObject = @{
-            PERSONID   = $rowNode.PERSON_ID
-            PERSONNAME = $rowNode.PERSON_NAME
-            SALARYNR   = $rowNode.EMPLOYEE_SALARYNR
-            EMPLOYEEID = $rowNode.EMPLOYEE_ID
+    #region Get JSessionID
+    try {
+        Write-Verbose "Getting JSessionID"
+    
+        $jSessionIDSplatParams = @{
+            BaseUrl      = $actionContext.Configuration.BaseUrl
+            ProxyAddress = $actionContext.Configuration.ProxyAddress
         }
-        # Note there will be only one row as salarynr should be unique
-        $EmployeeExists = $true
-        $selectedPersonId = $curObject.PERSONID
-        $selectedEmployeeID = $curObject.EMPLOYEEID
-
-        if ($curObject.PERSONNAME -ne $Account.PersonName) {
-            $ErrorMessage = "iprotect create for person " + $p.ExternalId + " with name " +
-            $account.PersonName + " failed. Employee is already associated with person `'" +
-            $curObject.PERSONNAME + "`'"
-            throw $ErrorMessage
-        }
+    
+        $jSessionID = Get-JSessionID @jSessionIDSplatParams
+    
+        Write-Verbose "Got JSessionID. Result: $($jSessionID | ConvertTo-Json)"
     }
+    catch {
+        $ex = $PSItem
 
-    if (-not($EmployeeExists)) {
-        $action = 'Create-Correlate'
-    } elseif ($updatePerson -eq $true) {
-        $action = 'Update-Correlate'
-    } else {
-        $action = 'Correlate'
-    }
+        $auditMessage = "Error getting JSessionID. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true) {
-        $auditLogs.Add([PSCustomObject]@{
-                Message = "$action Iprotect account for: [$($p.DisplayName)], will be executed during enforcement"
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = $auditMessage
+                IsError = $true
             })
+    
+        # Throw terminal error
+        throw $auditMessage
+    }
+    #endregion Get JSessionID
+    
+    #region Authenticate to iProtect
+    try {
+        Write-Verbose "Authenticating to iProtect"
+    
+        $authenicationResultplatParams = @{
+            BaseUrl    = $actionContext.Configuration.BaseUrl
+            JSessionID = $jSessionID
+            Username   = $actionContext.Configuration.UserName
+            Password   = $actionContext.Configuration.Password
+        }
+    
+        $authenicationResult = Get-AuthenticationResult @authenicationResultplatParams
+    
+        if (-Not ($authenicationResult.StatusCode -eq 302)) {
+            throw "Authentication failed with error [$($authenicationResult.StatusCode)]"
+        }
+        else {
+            Write-Verbose "Authenticated to iProtect. Result: $($authenicationResult | ConvertTo-Json)"
+        }
+    
+        Write-Verbose "Got JSessionID"
+    }
+    catch {
+        $ex = $PSItem
+
+        $auditMessage = "Error authenticating to iProtect. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = $auditMessage
+                IsError = $true
+            })
+    
+        # Throw terminal error
+        throw $auditMessage
+    }
+    #endregion Authenticate to iProtect
+
+    #region Person
+    #region Verify if person must be either [created ] or just [correlated]
+    try {
+        $queryCorrelatePerson = "
+            SELECT
+                $($personPropertiesToQuery -Join ',')
+            FROM
+                PERSON
+            WHERE
+                NAME = '$($personAccount.Name)'
+                AND FIRSTNAME = '$($personAccount.FirstName)'
+            "
+
+        $correlatePersonSplatParams = @{
+            BaseUrl    = $actionContext.Configuration.BaseUrl
+            JSessionID = $jSessionID
+            Query      = $queryCorrelatePerson
+            QueryType  = "query"
+        }
+
+        Write-Verbose "Querying person where [SALARYNR] = [$($personAccount.SALARYNR)]. SplatParams: $($correlatePersonSplatParams | ConvertTo-Json)"
+
+        $correlatedPerson = $null
+        $correlatedPerson = Invoke-IProtectQuery @correlatePersonSplatParams
+            
+        Write-Verbose "Queried person where [SALARYNR] = [$($personAccount.SALARYNR)]. Result: $($correlatedPerson | Out-String)"
+    }
+    catch {
+        $ex = $PSItem
+
+        $auditMessage = "Error querying person where [SALARYNR] = [$($personAccount.SALARYNR)]. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = $auditMessage
+                IsError = $true
+            })
+
+        # Log query
+        Write-Warning "Query: $queryCorrelatePerson"
+        
+        # Throw terminal error
+        throw $auditMessage
+    }
+    #endregion Verify if person must be either [created ] or just [correlated]
+
+    if (($correlatedPerson | Measure-Object).count -eq 0) {
+        $actionPerson = "Create"
+    }
+    elseif (($correlatedPerson | Measure-Object).count -eq 1) {
+        $actionPerson = "Correlate"
+    }
+    elseif (($correlatedPerson | Measure-Object).count -gt 1) {
+        $actionPerson = "MultipleFound"
     }
 
     # Process
-    if (-not($dryRun -eq $true)) {
-        switch ($action) {
-            'Create-Correlate' {
-                Write-Verbose 'Creating and correlating Iprotect account'
-                [bool]$personObjectIsCreated = $false
-                $query = "SELECT PERSONID, NAME, FIRSTNAME FROM PERSON WHERE NAME = "
-                $query += "`'"
-                $query += $account.PersonName
-                $query += "`' AND FIRSTNAME = "
-                $query += "`'"
-                $query += $account.PersonFirstName
-                $query += "`'"
-                $QueryDescription = "Lookup of existing Person object with PersonName = $($account.PersonName) and Firstname = $($account.PersonFirstName)"
-                Write-Verbose $queryDescription
-                $rowNodes = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "query" -QueryDescription $QueryDescription
-                if (-Not ($null -eq $rowNodes)) {
-                    if ($rowNodes.Count -gt 1) {
-                        $ErrorMessage = "Unable to create person object for employee. There are already multiple person objects with name [" + $account.PersonName +
-                        "] and firstname[" + $account.FirstName + " ]  Iprotect query for lookup of person " + $p.ExternalId + " failed"
-                        throw $ErrorMessage
+    switch ($actionPerson) {
+        "Create" {
+            #region Create person
+            try {
+                $objectCreatePerson = @{}
+
+                # Add the mapped fields to object to create person
+                foreach ($personAccountProperty in $personAccount.PsObject.Properties | Where-Object { $null -ne $_.Value }) {
+                    # Enclose specific fields with single quotes
+                    if ($personAccountProperty.Name -in $personPropertiesToEncloseInSingleQuotes) {
+                        [void]$objectCreatePerson.Add("$($personAccountProperty.Name)", "'$($personAccountProperty.Value)'")
+                    }
+                    # Enclose specific fields with hashtags
+                    elseif ($personAccountProperty.Name -in $personPropertiesToEncloseInHashtags) {
+                        [void]$objectCreatePerson.Add("$($personAccountProperty.Name)", "#$($personAccountProperty.Value)#")
+                    }
+                    else {
+                        [void]$objectCreatePerson.Add("$($personAccountProperty.Name)", "$($personAccountProperty.Value)")
                     }
                 }
-                $selectedPersonId = $null
-                foreach ($rowNode in $rowNodes) {
-                    #there will be only 0 or one rows
-                    $curObject = @{
-                        PERSONID  = $rowNode.PERSONID
-                        NAME      = $rowNode.NAME
-                        FIRSTNAME = $rowNode.FIRSTNAME
-                    }
-                    $selectedPersonId = $curObject.PERSONID
+
+                # Seperate Property Names with comma ,
+                $queryCreatePersonProperties = $(($objectCreatePerson.Keys -join ","))
+                # Seperate Property Values with comma ,
+                $queryCreatePersonValues = $(($objectCreatePerson.Values -join ","))
+
+                $queryCreatePerson = "
+                INSERT INTO Person
+                    ($($queryCreatePersonProperties))
+                VALUES
+                    ($($queryCreatePersonValues))
+                "
+
+                $createPersonSplatParams = @{
+                    BaseUrl    = $actionContext.Configuration.BaseUrl
+                    JSessionID = $jSessionID
+                    Query      = $queryCreatePerson
+                    QueryType  = "update"
                 }
 
-                if ($null -eq $selectedPersonId) {
-                    Write-Verbose 'The person object does not exist, so create it'
-                    $PersonName = $Account.PersonName
-                    $FirstName = $Account.PersonFirstName
-                    $query = "INSERT INTO Person (NAME, FIRSTNAME) VALUES (`'$PersonName`',`'$FirstName`')"
-                    $queryDescription = "Create a new person object with NAME = $PersonName , FIRSTNAME = $FirstName"
-                    Write-Verbose $queryDescription
-                    $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    Write-Verbose "Creating person with [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. SplatParams: $($createPersonSplatParams | ConvertTo-Json)"   
 
-                    # Collect PersonID from just created person object
-                    $query = "SELECT PERSONID ,NAME, FIRSTNAME FROM PERSON WHERE NAME = "
-                    $query += "`'"
-                    $query += $account.PersonName
-                    $query += "`' AND FIRSTNAME = "
-                    $query += "`'"
-                    $query += $account.PersonFirstName
-                    $query += "`'"
-                    $queryDescription = "Collect PersonID from just created person object with NAME = $PersonName , FIRSTNAME = $FirstName"
-                    Write-Verbose $queryDescription
-                    $rowNodes = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "query" -QueryDescription $QueryDescription
+                    $createdPerson = Invoke-IProtectQuery @createPersonSplatParams
 
-                    if ($null -eq $rowNodes) {
-                        $ErrorMessage = "Unable to get PersonID of just created person object with name [" + $account.PersonName + "] and firstname[" +
-                        $account.FirstName + " ].  Iprotect query for lookup of person " + $p.ExternalId + " failed"
-                        throw $ErrorMessage
+                    # Auditlog is created after query of created person to include accountreference
+                    Write-Verbose "Created person with [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]"
+                }
+                else {
+                    Write-Warning "DryRun: Would create person with [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. SplatParams: $($createPersonSplatParams | ConvertTo-Json)"
+                }
+            }
+            catch {
+                $ex = $PSItem
+
+                $auditMessage = "Error creating person with [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. Error: $($ex.Exception.Message)"
+                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+
+                # Log query
+                Write-Warning "Query: $queryCreatePerson"
+
+                # Throw terminal error
+                throw $auditMessage
+            }
+            #endregion Create person
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                #region Get created person by salarynr
+                try {
+                    $queryGetPerson = "
+                    SELECT
+                        $($personPropertiesToQuery -Join ',')
+                    FROM
+                        PERSON
+                    WHERE
+                        NAME = '$($personAccount.Name)'
+                        AND FIRSTNAME = '$($personAccount.FirstName)'
+                    "
+
+                    $getPersonSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryGetPerson
+                        QueryType  = "query"
                     }
-                    foreach ($rowNode in $rowNodes) {
-                        #there will be exactly 1 rows
-                        $curObject = @{
-                            PERSONID  = $rowNode.PERSONID
-                            NAME      = $rowNode.NAME
-                            FIRSTNAME = $rowNode.FIRSTNAME
+
+                    Write-Verbose "Querying created person where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. SplatParams: $($getPersonSplatParams | ConvertTo-Json)"
+
+                    $correlatedPerson = $null
+                    $correlatedPerson = Invoke-IProtectQuery @getPersonSplatParams
+
+                    if ($null -eq $correlatedPerson) {
+                        throw "No result returned"
+                    }
+        
+                    Write-Verbose "Queried created person where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. Result: $($correlatedPerson | Out-String)"
+                }
+                catch {
+                    $ex = $PSItem
+
+                    $auditMessage = "Error querying created person where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
+
+                    # Log query
+                    Write-Warning "Query: $queryGetPerson"
+
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Get created person by salarynr
+
+                #region Set AccountReference and AccountData and create auditlog
+                [void]$outputContext.AccountReference.add("Person", @{
+                        "PERSONID" = "$($correlatedPerson.PERSONID)"
+                    })
+
+                foreach ($correlatedPersonProperty in $correlatedPerson.PSObject.Properties | Where-Object { $_.Name -in $personPropertiesToExport }) {
+                    $outputContext.Data.Person | Add-Member -MemberType NoteProperty -Name $correlatedPersonProperty.Name -Value $correlatedPersonProperty.Value -Force
+                }
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Created person with [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)] with AccountReference: $($outputContext.AccountReference.Person | ConvertTo-Json)"
+                        IsError = $false
+                    })
+                #endregion Set AccountReference and AccountData and create auditlog
+            }
+
+            break
+        }
+
+        "Correlate" {
+            [void]$outputContext.AccountReference.add("Person", @{
+                    "PERSONID" = "$($correlatedPerson.PERSONID)"
+                })
+
+            foreach ($correlatedPersonProperty in $correlatedPerson.PSObject.Properties | Where-Object { $_.Name -in $personPropertiesToExport }) {
+                $outputContext.Data.Person | Add-Member -MemberType NoteProperty -Name $correlatedPersonProperty.Name -Value $correlatedPersonProperty.Value -Force
+            }
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
+                    Message = "Correlated to person with AccountReference: $($outputContext.AccountReference.Person | ConvertTo-Json) on [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]"
+                    IsError = $false
+                })
+
+            $outputContext.AccountCorrelated = $true
+
+            break
+        }
+
+        "MultipleFound" {
+            $auditMessage = "Multiple persons found where [SALARYNR] = [$($personAccount.SALARYNR)]. Please correct this so the persons are unique."
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = $auditMessage
+                    IsError = $true
+                })
+        
+            # Throw terminal error
+            throw $auditMessage
+
+            break
+        }
+    }
+    #endregion Person
+
+    #region Employee
+    # Set PersonID with PersonID of created or correlated person
+    $employeeAccount.PERSONID = $correlatedPerson.PERSONID
+
+    #region Verify if employee must be either [created ] or just [correlated]
+    try {
+        $queryCorrelateEmployee = "
+            SELECT
+                $($employeePropertiesToQuery -Join ',')
+            FROM
+                EMPLOYEE
+            WHERE
+                SALARYNR = '$($employeeAccount.SALARYNR)'
+            "
+
+        $correlateEmployeeSplatParams = @{
+            BaseUrl    = $actionContext.Configuration.BaseUrl
+            JSessionID = $jSessionID
+            Query      = $queryCorrelateEmployee
+            QueryType  = "query"
+        }
+
+        Write-Verbose "Querying employee where [SALARYNR] = [$($employeeAccount.SALARYNR)]. SplatParams: $($correlateEmployeeSplatParams | ConvertTo-Json)"
+
+        $correlatedEmployee = $null
+        $correlatedEmployee = Invoke-IProtectQuery @correlateEmployeeSplatParams
+            
+        Write-Verbose "Queried employee where [SALARYNR] = [$($employeeAccount.SALARYNR)]. Result: $($correlatedEmployee | Out-String)"
+    }
+    catch {
+        $ex = $PSItem
+
+        $auditMessage = "Error querying employee where [SALARYNR] = [$($employeeAccount.SALARYNR)]. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = $auditMessage
+                IsError = $true
+            })
+
+        # Log query
+        Write-Warning "Query: $queryCorrelateEmployee"
+        
+        # Throw terminal error
+        throw $auditMessage
+    }
+    #endregion Verify if employee must be either [created ] or just [correlated]
+
+    if (($correlatedEmployee | Measure-Object).count -eq 0) {
+        $actionEmployee = "Create"
+    }
+    elseif (($correlatedEmployee | Measure-Object).count -eq 1) {
+        $actionEmployee = "Correlate"
+    }
+    elseif (($correlatedEmployee | Measure-Object).count -gt 1) {
+        $actionEmployee = "MultipleFound"
+    }
+
+    # Process
+    switch ($actionEmployee) {
+        "Create" {
+            #region Create employee
+            try {
+                $objectCreateEmployee = @{}
+
+                # Add the mapped fields to object to create employee
+                foreach ($employeeAccountProperty in $employeeAccount.PsObject.Properties | Where-Object { $null -ne $_.Value }) {
+                    # Enclose specific fields with single quotes
+                    if ($employeeAccountProperty.Name -in $employeePropertiesToEncloseInSingleQuotes) {
+                        [void]$objectCreateEmployee.Add("$($employeeAccountProperty.Name)", "'$($employeeAccountProperty.Value)'")
+                    }
+                    # Enclose specific fields with hashtags
+                    elseif ($employeeAccountProperty.Name -in $employeePropertiesToEncloseInHashtags) {
+                        [void]$objectCreateEmployee.Add("$($employeeAccountProperty.Name)", "#$($employeeAccountProperty.Value)#")
+                    }
+                    else {
+                        [void]$objectCreateEmployee.Add("$($employeeAccountProperty.Name)", "$($employeeAccountProperty.Value)")
+                    }
+                }
+
+                # Seperate Property Names with comma ,
+                $queryCreateEmployeeProperties = $(($objectCreateEmployee.Keys -join ","))
+                # Seperate Property Values with comma ,
+                $queryCreateEmployeeValues = $(($objectCreateEmployee.Values -join ","))
+
+                $queryCreateEmployee = "
+                INSERT INTO Employee
+                    ($($queryCreateEmployeeProperties))
+                VALUES
+                    ($($queryCreateEmployeeValues))
+                "
+
+                $createEmployeeSplatParams = @{
+                    BaseUrl    = $actionContext.Configuration.BaseUrl
+                    JSessionID = $jSessionID
+                    Query      = $queryCreateEmployee
+                    QueryType  = "update"
+                }
+
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    Write-Verbose "Creating employee with [SALARYNR = $($employeeAccount.SalaryNr)] AND [PERSONID = $($correlatedPerson.PERSONID)]. SplatParams: $($createEmployeeSplatParams | ConvertTo-Json)"   
+
+                    $createdEmployee = Invoke-IProtectQuery @createEmployeeSplatParams
+
+                    # Auditlog is created after query of created employee to include accountreference
+                    Write-Verbose "Created employee with [SALARYNR = $($employeeAccount.SalaryNr)] AND [PERSONID = $($correlatedPerson.PERSONID)]"
+                }
+                else {
+                    Write-Warning "DryRun: Would create employee with [SALARYNR = $($employeeAccount.SalaryNr)] AND [PERSONID = $($correlatedPerson.PERSONID)]. SplatParams: $($createEmployeeSplatParams | ConvertTo-Json)"
+                }
+            }
+            catch {
+                $ex = $PSItem
+
+                $auditMessage = "Error creating employee with [SALARYNR = $($employeeAccount.SalaryNr)] AND [PERSONID = $($correlatedPerson.PERSONID)]. Error: $($ex.Exception.Message)"
+                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+
+                # Log query
+                Write-Warning "Query: $queryCreateEmployee"
+
+                # Throw terminal error
+                throw $auditMessage
+            }
+            #endregion Create employee
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                #region Get created employee by salarynr
+                try {
+                    $queryGetEmployee = "
+                    SELECT
+                        $($employeePropertiesToQuery -Join ',')
+                    FROM
+                        EMPLOYEE
+                    WHERE
+                        SALARYNR = '$($employeeAccount.SALARYNR)'
+                    "
+
+                    $getEmployeeSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryGetEmployee
+                        QueryType  = "query"
+                    }
+
+                    Write-Verbose "Querying created employee where [SALARYNR = $($employeeAccount.SalaryNr)]. SplatParams: $($getEmployeeSplatParams | ConvertTo-Json)"
+
+                    $correlatedEmployee = $null
+                    $correlatedEmployee = Invoke-IProtectQuery @getEmployeeSplatParams
+
+                    if ($null -eq $correlatedEmployee) {
+                        throw "No result returned"
+                    }
+        
+                    Write-Verbose "Queried created employee where [SALARYNR = $($employeeAccount.SalaryNr)]. Result: $($correlatedEmployee | Out-String)"
+                }
+                catch {
+                    $ex = $PSItem
+
+                    $auditMessage = "Error querying created employee where [SALARYNR = $($employeeAccount.SalaryNr)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
+
+                    # Log query
+                    Write-Warning "Query: $queryGetEmployee"
+
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Get created employee by salarynr
+
+                #region Set AccountReference and AccountData and create auditlog
+                [void]$outputContext.AccountReference.add("Employee", @{
+                        "EMPLOYEEID" = "$($correlatedEmployee.EMPLOYEEID)"
+                    })
+
+                foreach ($correlatedEmployeeProperty in $correlatedEmployee.PSObject.Properties | Where-Object { $_.Name -in $employeePropertiesToExport }) {
+                    $outputContext.Data.Employee | Add-Member -MemberType NoteProperty -Name $correlatedEmployeeProperty.Name -Value $correlatedEmployeeProperty.Value -Force
+                }
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Created employee with [SALARYNR = $($employeeAccount.SalaryNr)] AND [PERSONID = $($employeeAccount.PERSONID)] with AccountReference: $($outputContext.AccountReference.Employee | ConvertTo-Json)"
+                        IsError = $false
+                    })
+                #endregion Set AccountReference and AccountData and create auditlog
+            }
+
+            break
+        }
+
+        "Correlate" {
+            [void]$outputContext.AccountReference.add("Employee", @{
+                    "EMPLOYEEID" = "$($correlatedEmployee.EMPLOYEEID)"
+                })
+
+            foreach ($correlatedEmployeeProperty in $correlatedEmployee.PSObject.Properties | Where-Object { $_.Name -in $employeePropertiesToExport }) {
+                $outputContext.Data.Employee | Add-Member -MemberType NoteProperty -Name $correlatedEmployeeProperty.Name -Value $correlatedEmployeeProperty.Value -Force
+            }
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
+                    Message = "Correlated to employee with AccountReference: $($outputContext.AccountReference.Employee | ConvertTo-Json) on [SALARYNR = $($employeeAccount.SALARYNR)]"
+                    IsError = $false
+                })
+
+            $outputContext.AccountCorrelated = $true
+
+            break
+        }
+
+        "MultipleFound" {
+            $auditMessage = "Multiple employees found where [SALARYNR] = [$($employeeAccount.SALARYNR)]. Please correct this so the employees are unique."
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = $auditMessage
+                    IsError = $true
+                })
+        
+            # Throw terminal error
+            throw $auditMessage
+
+            break
+        }
+    }
+    #endregion Employee
+
+    #region KeyCard
+    if (-not [string]::IsNullOrEmpty($keyCardAccount.RCN)) {
+        # Set PersonID with PersonID of created or correlated person
+        $keyCardAccount.PERSONID = $correlatedPerson.PERSONID
+
+        #region Verify if keycard must be either [created ] or just [correlated]
+        try {
+            $queryCorrelateKeyCard = "
+            SELECT
+                $($keyCardPropertiesToQuery -Join ',')
+            FROM
+                ACCESSKEY
+            WHERE
+                CARDCLASSID = $($keyCardAccount.CARDCLASSID)
+                AND RCN = '$($keyCardAccount.RCN)'
+            "
+
+            $correlateKeyCardSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                Query      = $queryCorrelateKeyCard
+                QueryType  = "query"
+            }
+
+            Write-Verbose "Querying keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. SplatParams: $($correlateKeyCardSplatParams | ConvertTo-Json)"
+
+            $correlatedKeyCard = $null
+            $correlatedKeyCard = Invoke-IProtectQuery @correlateKeyCardSplatParams
+            
+            Write-Verbose "Queried keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Result: $($correlatedKeyCard | Out-String)"
+        }
+        catch {
+            $ex = $PSItem
+
+            $auditMessage = "Error querying keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
+            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = $auditMessage
+                    IsError = $true
+                })
+
+            # Log query
+            Write-Warning "Query: $queryCorrelateKeyCard"
+        
+            # Throw terminal error
+            throw $auditMessage
+        }
+        #endregion Verify if keycard must be either [created ] or just [correlated]
+
+        if (($correlatedKeyCard | Measure-Object).count -eq 0) {
+            $actionKeyCard = "Create"
+        }
+        elseif (($correlatedKeyCard | Measure-Object).count -eq 1) {
+            if ((-not([string]::IsNullorEmpty($correlatedKeyCard.PERSONID))) -and (-not($correlatedKeyCard.PERSONID -eq $keyCardAccount.PERSONID))) {
+                $actionKeyCard = "AlreadyAssigned"
+            }
+            elseif ((-not([string]::IsNullorEmpty($correlatedKeyCard.PERSONID))) -and ($correlatedKeyCard.PERSONID -eq $keyCardAccount.PERSONID)) {
+                $actionKeyCard = "Correlate"
+            }
+            else {
+                $actionKeyCard = "Assign"
+            }
+        }
+        elseif (($correlatedKeyCard | Measure-Object).count -gt 1) {
+            $actionKeyCard = "MultipleFound"
+        }
+
+        # Process
+        switch ($actionKeyCard) {
+            "Create" {
+                #region Create keycard
+                try {
+                    $objectCreateKeyCard = @{}
+
+                    # Add the mapped fields to object to create keycard
+                    foreach ($keyCardAccountProperty in $keyCardAccount.PsObject.Properties | Where-Object { $null -ne $_.Value }) {
+                        # Enclose specific fields with single quotes
+                        if ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInSingleQuotes) {
+                            [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "'$($keyCardAccountProperty.Value)'")
                         }
-                        $selectedPersonId = $curObject.PERSONID
-                        $personObjectIsCreated = $true
-                        break
+                        # Enclose specific fields with hashtags
+                        elseif ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInHashtags) {
+                            [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "#$($keyCardAccountProperty.Value)#")
+                        }
+                        else {
+                            [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "$($keyCardAccountProperty.Value)")
+                        }
+                    }
+
+                    # Seperate Property Names with comma ,
+                    $queryCreateKeyCardProperties = $(($objectCreateKeyCard.Keys -join ","))
+                    # Seperate Property Values with comma ,
+                    $queryCreateKeyCardValues = $(($objectCreateKeyCard.Values -join ","))
+
+                    $queryCreateKeyCard = "
+                    INSERT INTO ACCESSKEY
+                        ($($queryCreateKeyCardProperties))
+                    VALUES
+                        ($($queryCreateKeyCardValues))
+                    "
+
+                    $createKeyCardSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryCreateKeyCard
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Creating keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. SplatParams: $($createKeyCardSplatParams | ConvertTo-Json)"   
+
+                        $createdKeyCard = Invoke-IProtectQuery @createKeyCardSplatParams
+
+                        # Auditlog is created after query of created keycard to include accountreference
+                        Write-Verbose "Created keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]"
+                    }
+                    else {
+                        Write-Warning "DryRun: Would create keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. SplatParams: $($createKeyCardSplatParams | ConvertTo-Json)"
                     }
                 }
-                # the PersonId is now known, so create the employee object
-                $query = "INSERT INTO Employee (SALARYNR, PersonID) VALUES ('$($account.EmployeeSalaryNR)',$selectedPersonId)"
-                $queryDescription = "Create new Employee object, SALARYNR = $($account.EmployeeSalaryNR) PersonID = $selectedPersonId"
-                Write-Verbose  $queryDescription
-                $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update' -QueryDescription $QueryDescription
+                catch {
+                    $ex = $PSItem
 
-                $query = "SELECT EMPLOYEEID, SALARYNR FROM employee WHERE SALARYNR = '$($account.EmployeeSalaryNR)'"
-                $employeeObject = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query  -QueryType 'Query'
+                    $auditMessage = "Error creating keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
 
+                    # Log query
+                    Write-Warning "Query: $queryCreateKeyCard"
 
-                # update the account to set all optional attibutes as required
-                $query = New-EmployeeUpdateQuery -account $account -EmployeeSalaryNR $account.EmployeeSalaryNR
-                $queryDescription = "Updating Employee object with EmployeeSalaryNR [$($account.EmployeeSalaryNR)]"
-                Write-Verbose  $queryDescription
-                $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update' -QueryDescription $QueryDescription
-
-                if ($personObjectIsCreated -or $updatePerson) {
-                    $query = New-PersonUpdateQuery -account $account -PersonId $selectedPersonId
-                    $queryDescription = "Updating person object with PersonId [$selectedPersonId]"
-                    Write-Verbose  $queryDescription
-                    $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update' -QueryDescription $QueryDescription
+                    # Throw terminal error
+                    throw $auditMessage
                 }
+                #endregion Create keycard
 
-                if (-not [string]::IsNullOrEmpty($account.AccessKeyRCN)) {
-                    Write-Verbose "AccessKey [$($account.AccessKeyRCN)] found in Mapping"
-                    $splatInvokeAssign = @{
-                        AccessKeyRCN = $($account.AccessKeyRCN)
-                        CardClassId  = $script:AccessKeyCardClassId
-                        PersonId     = $selectedPersonId
-                        IsActive     = $account.AccessKeyIsActive
-                        JSessionID   = $jSessionID
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    #region Get created keycard by salarynr
+                    try {
+                        $queryGetKeyCard = "
+                        SELECT
+                            $($keyCardPropertiesToQuery -Join ',')
+                        FROM
+                            ACCESSKEY
+                        WHERE
+                            CARDCLASSID = $($keyCardAccount.CARDCLASSID)
+                            AND RCN = '$($keyCardAccount.RCN)'
+                        "
+
+                        $getKeyCardSplatParams = @{
+                            BaseUrl    = $actionContext.Configuration.BaseUrl
+                            JSessionID = $jSessionID
+                            Query      = $queryGetKeyCard
+                            QueryType  = "query"
+                        }
+
+                        Write-Verbose "Querying created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. SplatParams: $($getKeyCardSplatParams | ConvertTo-Json)"
+
+                        $correlatedKeyCard = $null
+                        $correlatedKeyCard = Invoke-IProtectQuery @getKeyCardSplatParams
+
+                        if ($null -eq $correlatedKeyCard) {
+                            throw "No result returned"
+                        }
+        
+                        Write-Verbose "Queried created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Result: $($correlatedKeyCard | Out-String)"
                     }
-                    $accessKeyId = Invoke-IprotectAssignAccessKey @splatInvokeAssign
+                    catch {
+                        $ex = $PSItem
 
-                    $auditLogs.Add([PSCustomObject]@{
-                            Message = "Set Accesskey [$($account.AccessKeyRCN)] to account [$($account.EmployeeSalaryNR)]. AccessKeyReference is: [$($accessKeyId)]"
+                        $auditMessage = "Error querying created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
+                        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = $auditMessage
+                                IsError = $true
+                            })
+
+                        # Log query
+                        Write-Warning "Query: $queryGetKeyCard"
+
+                        # Throw terminal error
+                        throw $auditMessage
+                    }
+                    #endregion Get created keycard by salarynr
+
+                    #region Set AccountReference and AccountData and create auditlog
+                    [void]$outputContext.AccountReference.add("KeyCard", @{
+                            "ACCESSKEYID" = "$($correlatedKeyCard.ACCESSKEYID)"
+                        })
+
+                    foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToExport }) {
+                        $outputContext.Data.KeyCard | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
+                    }
+    
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Created keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)] with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json)"
                             IsError = $false
                         })
+                    #endregion Set AccountReference and AccountData and create auditlog
                 }
 
-                if (-not [string]::IsNullOrEmpty($account.LicensePlateRCN)) {
-                    $licensePlateRCN = "$($account.CountryCodeLicensePlate),$($account.LicensePlateRCN)"
-                    Write-Verbose "LicensePlate [$licensePlateRCN] found in Mapping"
-                    $splatInvokeAssign = @{
-                        AccessKeyRCN = $licensePlateRCN
-                        CardClassId  = $script:LicensePlateCardClassID
-                        PersonId     = $selectedPersonId
-                        IsActive     = 1 # Create Always active
-                        JSessionID   = $jSessionID
-                    }
-                    $accessKeyLicensePlateId = Invoke-IprotectAssignAccessKey @splatInvokeAssign
-                    $auditLogs.Add([PSCustomObject]@{
-                            Message = "Set LicensePlate [$licensePlateRCN] to account [$($account.EmployeeSalaryNR)]. LicensePlateReference is: [$accessKeyLicensePlateId]"
-                            IsError = $false
-                        })
-                }
-                $aRef = @{
-                    EmployeeId              = $employeeObject.EMPLOYEEID
-                    PersonId                = $selectedPersonId
-                    AccessKeyId             = $accessKeyId
-                    AccessKeyIdLicensePlate = $accessKeyLicensePlateId
-                }
                 break
             }
 
-            'Update-Correlate' {
-                Write-Verbose "Updating and correlating Iprotect account with EmployeeID [$selectedEmployeeID] and SalaryNR [$($account.EmployeeSalaryNR)]"
-                $query = New-EmployeeUpdateQuery -account $account -EmployeeSalaryNR $account.EmployeeSalaryNR
-                $queryDescription = "Updating Employee object with EmployeeSalaryNR [$($account.EmployeeSalaryNR)]"
-                Write-Verbose  $queryDescription
-                $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
+            "Assign" {
+                #region Assign keycard
+                try {
+                    $objectAssignKeyCard = @{}
 
-                $query = New-PersonUpdateQuery -account $account -PersonId $selectedPersonId
-                $queryDescription = "Updating person object with PersonId [$selectedPersonId]"
-                Write-Verbose  $queryDescription
-                $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
+                    $keyCardPropertiesToUseOnAssign = @(
+                        "RCN"
+                        , "PERSONID"
+                    )
 
-                if (-not [string]::IsNullOrEmpty($account.AccessKeyRCN)) {
-                    Write-Verbose "AccessKey [$($account.AccessKeyRCN)] found in Mapping"
-                    $splatInvokeAssign = @{
-                        AccessKeyRCN = $($account.AccessKeyRCN)
-                        CardClassId  = $script:AccessKeyCardClassId
-                        PersonId     = $selectedPersonId
-                        IsActive     = $account.AccessKeyIsActive
-                        JSessionID   = $jSessionID
+                    # Add the mapped fields to object to assign keycard
+                    foreach ($keyCardAccountProperty in $keyCardAccount.PsObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToUseOnAssign -and $null -ne $_.Value }) {
+                        # Enclose specific fields with single quotes
+                        if ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInSingleQuotes) {
+                            [void]$objectAssignKeyCard.Add("$($keyCardAccountProperty.Name)", "'$($keyCardAccountProperty.Value)'")
+                        }
+                        # Enclose specific fields with hashtags
+                        elseif ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInHashtags) {
+                            [void]$objectAssignKeyCard.Add("$($keyCardAccountProperty.Name)", "#$($keyCardAccountProperty.Value)#")
+                        }
+                        else {
+                            [void]$objectAssignKeyCard.Add("$($keyCardAccountProperty.Name)", "$($keyCardAccountProperty.Value)")
+                        }
                     }
-                    $accessKeyId = Invoke-IprotectAssignAccessKey @splatInvokeAssign
 
-                    $auditLogs.Add([PSCustomObject]@{
-                            Message = "Set Accesskey [$($account.AccessKeyRCN)] to account [$($account.EmployeeSalaryNR)]. AccessKeyReference is: [$($accessKeyId)]"
-                            IsError = $false
-                        })
-                }
+                    # Seperate Properties with comma , and enclose values with single quotes ''
+                    $queryAssignKeyCardPropertiesAndValues = ($objectAssignKeyCard.Keys | ForEach-Object {
+                            "$($_) = $($objectAssignKeyCard.$_)"
+                        }) -join " , "
 
-                if (-not [string]::IsNullOrEmpty($account.LicensePlateRCN)) {
-                    $licensePlateRCN = "$($account.CountryCodeLicensePlate),$($account.LicensePlateRCN)"
-                    Write-Verbose "LicensePlate [$licensePlateRCN] found in Mapping"
-                    $splatInvokeAssign = @{
-                        AccessKeyRCN = $licensePlateRCN
-                        CardClassId  = $script:LicensePlateCardClassID
-                        PersonId     = $selectedPersonId
-                        IsActive     = 1 # Create Always active
-                        JSessionID   = $jSessionID
+                    $queryAssignKeyCard = "
+                    UPDATE
+                        ACCESSKEY
+                    SET
+                        $queryAssignKeyCardPropertiesAndValues
+                    WHERE
+                        ACCESSKEYID = $($correlatedKeyCard.ACCESSKEYID)
+                    "
+
+                    $assignKeyCardSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryAssignKeyCard
+                        QueryType  = "update"
                     }
-                    $accessKeyLicensePlateId = Invoke-IprotectAssignAccessKey @splatInvokeAssign
-                    $auditLogs.Add([PSCustomObject]@{
-                            Message = "Set LicensePlate [$licensePlateRCN] to account [$($account.EmployeeSalaryNR)]. LicensePlateReference is: [$accessKeyLicensePlateId]"  #TODO Var Checken
-                            IsError = $false
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Assigning keycard with [ACCESSKEYID = $($correlatedKeyCard.ACCESSKEYID)]. SplatParams: $($assignKeyCardSplatParams | ConvertTo-Json)"   
+
+                        $assignedKeyCard = Invoke-IProtectQuery @assignKeyCardSplatParams
+
+                        # Auditlog is created after query of assigned keycard to include accountreference
+                        Write-Verbose "Assigned keycard with [ACCESSKEYID = $($correlatedKeyCard.ACCESSKEYID)]"
+                    }
+                    else {
+                        Write-Warning "DryRun: Would assign keycard with [ACCESSKEYID = $($correlatedKeyCard.ACCESSKEYID)]. SplatParams: $($assignKeyCardSplatParams | ConvertTo-Json)"
+                    }
+                }
+                catch {
+                    $ex = $PSItem
+
+                    $auditMessage = "Error assigning keycard with [ACCESSKEYID = $($correlatedKeyCard.ACCESSKEYID)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
                         })
+
+                    # Log query
+                    Write-Warning "Query: $queryAssignKeyCard"
+
+                    # Throw terminal error
+                    throw $auditMessage
                 }
-                $aRef = @{
-                    EmployeeId              = $selectedEmployeeID
-                    PersonId                = $selectedPersonId
-                    AccessKeyId             = $accessKeyId
-                    AccessKeyIdLicensePlate = $accessKeyLicensePlateId
+                #endregion Assign keycard
+
+                #region Set AccountReference and AccountData and create auditlog
+                [void]$outputContext.AccountReference.add("KeyCard", @{
+                        "ACCESSKEYID" = "$($correlatedKeyCard.ACCESSKEYID)"
+                    })
+
+                foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToExport }) {
+                    $outputContext.Data.KeyCard | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
                 }
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Assigned keycard with [ACCESSKEYID = $($correlatedKeyCard.ACCESSKEYID)] with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json)"
+                        IsError = $false
+                    })
+                #endregion Set AccountReference and AccountData and create auditlog
                 break
             }
 
-            'Correlate' {
-                Write-Verbose 'Correlating Iprotect account'
-                $aRef = @{
-                    EmployeeId              = $selectedEmployeeID
-                    PersonId                = $selectedPersonId
-                    AccessKeyId             = $null
-                    AccessKeyIdLicensePlate = $null
+            "Correlate" {
+                [void]$outputContext.AccountReference.add("KeyCard", @{
+                        "ACCESSKEYID" = "$($correlatedKeyCard.ACCESSKEYID)"
+                    })
+
+                foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToExport }) {
+                    $outputContext.Data.KeyCard | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
                 }
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
+                        Message = "Correlated to keycard with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json) on [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]"
+                        IsError = $false
+                    })
+
+                $outputContext.AccountCorrelated = $true
+
+                break
+            }
+
+            "AlreadyAssigned" {
+                $auditMessage = "Keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)] is already assigned to person [$($correlatedKeyCard.PERSONID)]"
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+            
+                # Throw terminal error
+                throw $auditMessage
+    
+                break
+            }
+
+            "MultipleFound" {
+                $auditMessage = "Multiple keycards found where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Please correct this so the keycards are unique."
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+        
+                # Throw terminal error
+                throw $auditMessage
+
                 break
             }
         }
-
-        $success = $true
-
-        $auditLogs.Add([PSCustomObject]@{
-                Message = "$action account was successful. AccountReference: EmployeeId = [$($aRef.EmployeeId)] PersonId = [$($aRef.PersonId)] AccessKeyId = [$($aRef.AccessKeyId)] AccessKeyIdLicensePlate = [$($aRef.AccessKeyIdLicensePlate)]"
-                IsError = $false
-            })
-
     }
-} catch {
-    $success = $false
+    #endregion KeyCard
+
+    #region LicensePlate
+    if (-not [string]::IsNullOrEmpty($licensePlateAccount.RCN)) {
+        # Set PersonID with PersonID of created or correlated person
+        $licensePlateAccount.PERSONID = $correlatedPerson.PERSONID
+
+        #region Verify if licenseplate must be either [created ] or just [correlated]
+        try {
+            $queryCorrelateLicensePlate = "
+            SELECT
+                $($licensePlatePropertiesToQuery -Join ',')
+            FROM
+                ACCESSKEY
+            WHERE
+                CARDCLASSID = $($licensePlateAccount.CARDCLASSID)
+                AND RCN = '$($licensePlateAccount.RCN)'
+            "
+
+            $correlateLicensePlateSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                Query      = $queryCorrelateLicensePlate
+                QueryType  = "query"
+            }
+
+            Write-Verbose "Querying licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. SplatParams: $($correlateLicensePlateSplatParams | ConvertTo-Json)"
+
+            $correlatedLicensePlate = $null
+            $correlatedLicensePlate = Invoke-IProtectQuery @correlateLicensePlateSplatParams
+            
+            Write-Verbose "Queried licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. Result: $($correlatedLicensePlate | Out-String)"
+        }
+        catch {
+            $ex = $PSItem
+
+            $auditMessage = "Error querying licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. Error: $($ex.Exception.Message)"
+            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = $auditMessage
+                    IsError = $true
+                })
+
+            # Log query
+            Write-Warning "Query: $queryCorrelateLicensePlate"
+        
+            # Throw terminal error
+            throw $auditMessage
+        }
+        #endregion Verify if licenseplate must be either [created ] or just [correlated]
+
+        if (($correlatedLicensePlate | Measure-Object).count -eq 0) {
+            $actionLicensePlate = "Create"
+        }
+        elseif (($correlatedLicensePlate | Measure-Object).count -eq 1) {
+            if ((-not([string]::IsNullorEmpty($correlatedLicensePlate.PERSONID))) -and (-not($correlatedLicensePlate.PERSONID -eq $licensePlateAccount.PERSONID))) {
+                $actionLicensePlate = "AlreadyAssigned"
+            }
+            elseif ((-not([string]::IsNullorEmpty($correlatedLicensePlate.PERSONID))) -and ($correlatedLicensePlate.PERSONID -eq $licensePlateAccount.PERSONID)) {
+                $actionLicensePlate = "Correlate"
+            }
+            else {
+                $actionLicensePlate = "Assign"
+            }
+        }
+        elseif (($correlatedLicensePlate | Measure-Object).count -gt 1) {
+            $actionLicensePlate = "MultipleFound"
+        }
+
+        # Process
+        switch ($actionLicensePlate) {
+            "Create" {
+                #region Create licenseplate
+                try {
+                    $objectCreateLicensePlate = @{}
+
+                    # Add the mapped fields to object to create licenseplate
+                    foreach ($licensePlateAccountProperty in $licensePlateAccount.PsObject.Properties | Where-Object { $null -ne $_.Value }) {
+                        # Enclose specific fields with single quotes
+                        if ($licensePlateAccountProperty.Name -in $licensePlatePropertiesToEncloseInSingleQuotes) {
+                            [void]$objectCreateLicensePlate.Add("$($licensePlateAccountProperty.Name)", "'$($licensePlateAccountProperty.Value)'")
+                        }
+                        # Enclose specific fields with hashtags
+                        elseif ($licensePlateAccountProperty.Name -in $licensePlatePropertiesToEncloseInHashtags) {
+                            [void]$objectCreateLicensePlate.Add("$($licensePlateAccountProperty.Name)", "#$($licensePlateAccountProperty.Value)#")
+                        }
+                        else {
+                            [void]$objectCreateLicensePlate.Add("$($licensePlateAccountProperty.Name)", "$($licensePlateAccountProperty.Value)")
+                        }
+                    }
+
+                    # Seperate Property Names with comma ,
+                    $queryCreateLicensePlateProperties = $(($objectCreateLicensePlate.Keys -join ","))
+                    # Seperate Property Values with comma ,
+                    $queryCreateLicensePlateValues = $(($objectCreateLicensePlate.Values -join ","))
+
+                    $queryCreateLicensePlate = "
+                    INSERT INTO ACCESSKEY
+                        ($($queryCreateLicensePlateProperties))
+                    VALUES
+                        ($($queryCreateLicensePlateValues))
+                    "
+
+                    $createLicensePlateSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryCreateLicensePlate
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Creating licenseplate with [CARDCLASSID = $($licensePlateAccount.CARDCLASSID)] AND [RCN = $($licensePlateAccount.RCN)]. SplatParams: $($createLicensePlateSplatParams | ConvertTo-Json)"   
+
+                        $createdLicensePlate = Invoke-IProtectQuery @createLicensePlateSplatParams
+
+                        # Auditlog is created after query of created licenseplate to include accountreference
+                        Write-Verbose "Created licenseplate with [CARDCLASSID = $($licensePlateAccount.CARDCLASSID)] AND [RCN = $($licensePlateAccount.RCN)]"
+                    }
+                    else {
+                        Write-Warning "DryRun: Would create licenseplate with [CARDCLASSID = $($licensePlateAccount.CARDCLASSID)] AND [RCN = $($licensePlateAccount.RCN)]. SplatParams: $($createLicensePlateSplatParams | ConvertTo-Json)"
+                    }
+                }
+                catch {
+                    $ex = $PSItem
+
+                    $auditMessage = "Error creating licenseplate with [CARDCLASSID = $($licensePlateAccount.CARDCLASSID)] AND [RCN = $($licensePlateAccount.RCN)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
+
+                    # Log query
+                    Write-Warning "Query: $queryCreateLicensePlate"
+
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Create licenseplate
+
+                if (-Not($actionContext.DryRun -eq $true)) {
+                    #region Get created licenseplate by salarynr
+                    try {
+                        $queryGetLicensePlate = "
+                        SELECT
+                            $($licensePlatePropertiesToQuery -Join ',')
+                        FROM
+                            ACCESSKEY
+                        WHERE
+                            CARDCLASSID = $($licensePlateAccount.CARDCLASSID)
+                            AND RCN = '$($licensePlateAccount.RCN)'
+                        "
+
+                        $getLicensePlateSplatParams = @{
+                            BaseUrl    = $actionContext.Configuration.BaseUrl
+                            JSessionID = $jSessionID
+                            Query      = $queryGetLicensePlate
+                            QueryType  = "query"
+                        }
+
+                        Write-Verbose "Querying created licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. SplatParams: $($getLicensePlateSplatParams | ConvertTo-Json)"
+
+                        $correlatedLicensePlate = $null
+                        $correlatedLicensePlate = Invoke-IProtectQuery @getLicensePlateSplatParams
+
+                        if ($null -eq $correlatedLicensePlate) {
+                            throw "No result returned"
+                        }
+        
+                        Write-Verbose "Queried created licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. Result: $($correlatedLicensePlate | Out-String)"
+                    }
+                    catch {
+                        $ex = $PSItem
+
+                        $auditMessage = "Error querying created licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. Error: $($ex.Exception.Message)"
+                        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = $auditMessage
+                                IsError = $true
+                            })
+
+                        # Log query
+                        Write-Warning "Query: $queryGetLicensePlate"
+
+                        # Throw terminal error
+                        throw $auditMessage
+                    }
+                    #endregion Get created licenseplate by salarynr
+
+                    #region Set AccountReference and AccountData and create auditlog
+                    [void]$outputContext.AccountReference.add("LicensePlate", @{
+                            "ACCESSKEYID" = "$($correlatedLicensePlate.ACCESSKEYID)"
+                        })
+
+                    foreach ($correlatedLicensePlateProperty in $correlatedLicensePlate.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToExport }) {
+                        $outputContext.Data.LicensePlate | Add-Member -MemberType NoteProperty -Name $correlatedLicensePlateProperty.Name -Value $correlatedLicensePlateProperty.Value -Force
+                    }
+    
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = "Created licenseplate with [CARDCLASSID = $($licensePlateAccount.CARDCLASSID)] AND [RCN = $($licensePlateAccount.RCN)] with AccountReference: $($outputContext.AccountReference.LicensePlate | ConvertTo-Json)"
+                            IsError = $false
+                        })
+                    #endregion Set AccountReference and AccountData and create auditlog
+                }
+
+                break
+            }
+
+            "Assign" {
+                #region Assign licenseplate
+                try {
+                    $objectAssignLicensePlate = @{}
+
+                    $licensePlatePropertiesToUseOnAssign = @(
+                        "RCN"
+                        , "PERSONID"
+                    )
+
+                    # Add the mapped fields to object to assign licenseplate
+                    foreach ($licensePlateAccountProperty in $licensePlateAccount.PsObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToUseOnAssign -and $null -ne $_.Value }) {
+                        # Enclose specific fields with single quotes
+                        if ($licensePlateAccountProperty.Name -in $licensePlatePropertiesToEncloseInSingleQuotes) {
+                            [void]$objectAssignLicensePlate.Add("$($licensePlateAccountProperty.Name)", "'$($licensePlateAccountProperty.Value)'")
+                        }
+                        # Enclose specific fields with hashtags
+                        elseif ($licensePlateAccountProperty.Name -in $licensePlatePropertiesToEncloseInHashtags) {
+                            [void]$objectAssignLicensePlate.Add("$($licensePlateAccountProperty.Name)", "#$($licensePlateAccountProperty.Value)#")
+                        }
+                        else {
+                            [void]$objectAssignLicensePlate.Add("$($licensePlateAccountProperty.Name)", "$($licensePlateAccountProperty.Value)")
+                        }
+                    }
+
+                    # Seperate Properties with comma , and enclose values with single quotes ''
+                    $queryAssignLicensePlatePropertiesAndValues = ($objectAssignLicensePlate.Keys | ForEach-Object {
+                            "$($_) = $($objectAssignLicensePlate.$_)"
+                        }) -join " , "
+
+                    $queryAssignLicensePlate = "
+                    UPDATE
+                        ACCESSKEY
+                    SET
+                        $queryAssignLicensePlatePropertiesAndValues
+                    WHERE
+                        ACCESSKEYID = $($correlatedLicensePlate.ACCESSKEYID)
+                    "
+
+                    $assignLicensePlateSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryAssignLicensePlate
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Assigning licenseplate with [ACCESSKEYID = $($correlatedLicensePlate.ACCESSKEYID)]. SplatParams: $($assignLicensePlateSplatParams | ConvertTo-Json)"   
+
+                        $assignedLicensePlate = Invoke-IProtectQuery @assignLicensePlateSplatParams
+
+                        # Auditlog is created after query of assigned licenseplate to include accountreference
+                        Write-Verbose "Assigned licenseplate with [ACCESSKEYID = $($correlatedLicensePlate.ACCESSKEYID)]"
+                    }
+                    else {
+                        Write-Warning "DryRun: Would assign licenseplate with [ACCESSKEYID = $($correlatedLicensePlate.ACCESSKEYID)]. SplatParams: $($assignLicensePlateSplatParams | ConvertTo-Json)"
+                    }
+                }
+                catch {
+                    $ex = $PSItem
+
+                    $auditMessage = "Error assigning licenseplate with [ACCESSKEYID = $($correlatedLicensePlate.ACCESSKEYID)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
+
+                    # Log query
+                    Write-Warning "Query: $queryAssignLicensePlate"
+
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Assign licenseplate
+
+                #region Set AccountReference and AccountData and create auditlog
+                [void]$outputContext.AccountReference.add("LicensePlate", @{
+                        "ACCESSKEYID" = "$($correlatedLicensePlate.ACCESSKEYID)"
+                    })
+
+                foreach ($correlatedLicensePlateProperty in $correlatedLicensePlate.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToExport }) {
+                    $outputContext.Data.LicensePlate | Add-Member -MemberType NoteProperty -Name $correlatedLicensePlateProperty.Name -Value $correlatedLicensePlateProperty.Value -Force
+                }
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = "Assigned licenseplate with [ACCESSKEYID = $($correlatedLicensePlate.ACCESSKEYID)] with AccountReference: $($outputContext.AccountReference.LicensePlate | ConvertTo-Json)"
+                        IsError = $false
+                    })
+                #endregion Set AccountReference and AccountData and create auditlog
+                break
+            }
+
+            "Correlate" {
+                [void]$outputContext.AccountReference.add("LicensePlate", @{
+                        "ACCESSKEYID" = "$($correlatedLicensePlate.ACCESSKEYID)"
+                    })
+
+                foreach ($correlatedLicensePlateProperty in $correlatedLicensePlate.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToExport }) {
+                    $outputContext.Data.LicensePlate | Add-Member -MemberType NoteProperty -Name $correlatedLicensePlateProperty.Name -Value $correlatedLicensePlateProperty.Value -Force
+                }
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
+                        Message = "Correlated to licenseplate with AccountReference: $($outputContext.AccountReference.LicensePlate | ConvertTo-Json) on [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]"
+                        IsError = $false
+                    })
+
+                $outputContext.AccountCorrelated = $true
+
+                break
+            }
+
+            "AlreadyAssigned" {
+                $auditMessage = "Licenseplate where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)] is already assigned to person [$($correlatedLicensePlate.PERSONID)]"
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+            
+                # Throw terminal error
+                throw $auditMessage
+    
+                break
+            }
+
+            "MultipleFound" {
+                $auditMessage = "Multiple licenseplates found where [CARDCLASSID] = [$($licensePlateAccount.CARDCLASSID)] AND [RCN] = [$($licensePlateAccount.RCN)]. Please correct this so the licenseplates are unique."
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+        
+                # Throw terminal error
+                throw $auditMessage
+
+                break
+            }
+        }
+    }
+    #endregion LicensePlate
+}
+catch {
     $ex = $PSItem
-    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not $action Iprotect account. Error: $($errorObj.ErrorMessage)"
-    } else {
-        $errorMessage = "Could not $action Iprotect account. Error: $($ex.Exception.Message)"
+    Write-Warning "Terminal error occurred. Error Message: $($ex.Exception.Message)"
+}
+finally {
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if ($outputContext.AuditLogs.IsError -contains $true) {
+        $outputContext.Success = $false
     }
-    Write-Verbose $errorMessage
-    $auditLogs.Add([PSCustomObject]@{
-            Message = $errorMessage
-            IsError = $true
-        })
-    # End
-} finally {
+    else {
+        $outputContext.Success = $true
+    }
+
+    # Check if accountreference is set, if not set, set this with default value as this must contain a value
+    if ([String]::IsNullOrEmpty($outputContext.AccountReference)) {
+        $outputContext.AccountReference = "Currently not available"
+    }
 
     if ($null -ne $script:WebSession) {
-        $null = Invoke-logout
-    }
+        # Log out session
+        try {
+            $logoutSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                QueryType  = "logout"
+            }
 
-    $result = [PSCustomObject]@{
-        Success          = $success
-        AccountReference = $aRef
-        Auditlogs        = $auditLogs
-        Account          = $account
+            Write-Verbose "Logging out. SplatParams: $($logoutSplatParams | ConvertTo-Json)"   
+
+            $loggedOut = Invoke-IProtectQuery @logoutSplatParams
+
+            Write-Verbose "Logged out. Result: $($loggedOut | Out-String)"
+        }
+        catch {
+            $ex = $PSItem
+
+            $auditMessage = "Error logging out. Error: $($ex.Exception.Message)"
+            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+            # Logout failure is not critical
+            Write-Warning $auditMessage
+        }
     }
-    Write-Output $result | ConvertTo-Json -Depth 10
 }

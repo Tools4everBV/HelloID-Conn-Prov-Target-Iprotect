@@ -1,5 +1,15 @@
 [
     {
+        "key": "BaseUrl",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "BaseUrl",
+            "description": "The URL to the API.",
+            "required": true
+        }
+    },
+    {
         "key": "UserName",
         "type": "input",
         "defaultValue": "",
@@ -20,23 +30,13 @@
         }
     },
     {
-        "key": "BaseUrl",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-            "label": "BaseUrl",
-            "description": "The URL to the API.",
-            "required": true
-        }
-    },
-    {
         "key": "IsDebug",
         "type": "checkbox",
-        "defaultValue": true,
+        "defaultValue": false,
         "templateOptions": {
-          "label": "Toggle debug logging",
-          "description": "When toggled, debug logging will be displayed",
-          "required": false
+            "label": "Toggle debug logging",
+            "description": "When toggled, debug logging will be displayed",
+            "required": false
         }
     },
     {
@@ -44,9 +44,9 @@
         "type": "input",
         "defaultValue": "",
         "templateOptions": {
-          "label": "Proxy address",
-          "placeholder": "http://localhost:8888",
-          "required": false
+            "label": "Proxy address",
+            "placeholder": "http://localhost:8888",
+            "required": false
         }
-      } 
+    }
 ]
