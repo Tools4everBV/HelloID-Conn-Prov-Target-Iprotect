@@ -316,9 +316,10 @@ try {
     #endregion Authenticate to iProtect
 
     #region KeyCard
-    #region Get current keycard
-    try {
-        $queryCorrelateKeyCard = "
+    if (-not [string]::IsNullOrEmpty($keyCardCorrelationValue)) {
+        #region Get current keycard
+        try {
+            $queryCorrelateKeyCard = "
             SELECT
                 $($keyCardPropertiesToQuery -Join ',')
             FROM
@@ -327,128 +328,128 @@ try {
                 $keyCardCorrelationField = $($keyCardCorrelationValue)
             "
 
-        $correlateKeyCardSplatParams = @{
-            BaseUrl    = $actionContext.Configuration.BaseUrl
-            JSessionID = $jSessionID
-            Query      = $queryCorrelateKeyCard
-            QueryType  = "query"
-        }
+            $correlateKeyCardSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                Query      = $queryCorrelateKeyCard
+                QueryType  = "query"
+            }
 
-        Write-Verbose "Querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. SplatParams: $($correlateKeyCardSplatParams | ConvertTo-Json)"
+            Write-Verbose "Querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. SplatParams: $($correlateKeyCardSplatParams | ConvertTo-Json)"
 
-        $correlatedKeyCard = $null
-        $correlatedKeyCard = Invoke-IProtectQuery @correlateKeyCardSplatParams
+            $correlatedKeyCard = $null
+            $correlatedKeyCard = Invoke-IProtectQuery @correlateKeyCardSplatParams
             
-        Write-Verbose "Queried keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Result: $($correlatedKeyCard | Out-String)"
-    }
-    catch {
-        $ex = $PSItem
-
-        $auditMessage = "Error querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
-
-        # Log query
-        Write-Warning "Query: $queryCorrelateKeyCard"
-        
-        # Throw terminal error
-        throw $auditMessage
-    }
-    #endregion Get current keycard
-
-    if (($correlatedKeyCard | Measure-Object).count -eq 1) {
-        try {
-            Write-Verbose "Comparing current keyCard to mapped properties"
-
-            # Create reference object from correlated account
-            $keyCardReferenceObject = [PSCustomObject]@{}
-            foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties) {
-                $keyCardReferenceObject | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
-            }
-
-            # Create difference object from mapped properties
-            $keyCardDifferenceObject = [PSCustomObject]@{}
-            foreach ($keyCardAccountProperty in $keyCardAccount.PSObject.Properties) {
-                $keyCardDifferenceObject | Add-Member -MemberType NoteProperty -Name $keyCardAccountProperty.Name -Value $keyCardAccountProperty.Value -Force
-            }
-
-            $keyCardSplatCompareProperties = @{
-                ReferenceObject  = $keyCardReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToCompare }
-                DifferenceObject = $keyCardDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToCompare }
-            }
-            if ($null -ne $keyCardSplatCompareProperties.ReferenceObject -and $null -ne $keyCardSplatCompareProperties.DifferenceObject) {
-                $keyCardPropertiesChanged = Compare-Object @keyCardSplatCompareProperties -PassThru
-                $keyCardOldProperties = $keyCardPropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
-                $keyCardNewProperties = $keyCardPropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
-            }
-
-            if ($keyCardNewProperties) {
-                $actionKeyCard = "Disable"
-                Write-Information "Keycard property(s) required to update: $($keyCardNewProperties.Name -join ', ')"
-            }
-            else {
-                $actionKeyCard = "NoChanges"
-            }
-
-            Write-Verbose "Compared current keyCard to mapped properties"
+            Write-Verbose "Queried keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Result: $($correlatedKeyCard | Out-String)"
         }
         catch {
             $ex = $PSItem
 
-            $auditMessage = "Error comparing current keyCard to mapped properties. Error: $($ex.Exception.Message)"
+            $auditMessage = "Error querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
             Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-    
+
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = $auditMessage
                     IsError = $true
                 })
-    
+
+            # Log query
+            Write-Warning "Query: $queryCorrelateKeyCard"
+        
             # Throw terminal error
             throw $auditMessage
         }
-    }
-    elseif (($correlatedKeyCard | Measure-Object).count -gt 1) {
-        $actionKeyCard = "MultipleFound"
-    }
-    elseif (($correlatedKeyCard | Measure-Object).count -eq 0) {
-        $actionKeyCard = "NotFound"
-    }
+        #endregion Get current keycard
 
-    # Process
-    switch ($actionKeyCard) {
-        "Disable" {
-            #region Disable keycard
+        if (($correlatedKeyCard | Measure-Object).count -eq 1) {
             try {
-                # Create object to disable keycard as empty hashtable
-                $objectDisableKeyCard = @{}
+                Write-Verbose "Comparing current keyCard to mapped properties"
 
-                # Add the disabled properties to object to disable keycard
-                foreach ($keyCardNewProperty in $keyCardNewProperties) {
-                    # Enclose specific fields with single quotes
-                    if ($keyCardNewProperty.Name -in $keyCardPropertiesToEncloseInSingleQuotes) {
-                        [void]$objectDisableKeyCard.Add("$($keyCardNewProperty.Name)", "'$($keyCardNewProperty.Value)'")
-                    }
-                    # Enclose specific fields with hashtags
-                    elseif ($keyCardNewProperty.Name -in $keyCardPropertiesToEncloseInHashtags) {
-                        [void]$objectDisableKeyCard.Add("$($keyCardNewProperty.Name)", "#$($keyCardNewProperty.Value)#")
-                    }
-                    else {
-                        [void]$objectDisableKeyCard.Add("$($keyCardNewProperty.Name)", "$($keyCardNewProperty.Value)")
-                    }
+                # Create reference object from correlated account
+                $keyCardReferenceObject = [PSCustomObject]@{}
+                foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties) {
+                    $keyCardReferenceObject | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
                 }
 
-                # Seperate Properties with comma , and enclose values with single quotes ''
-                $queryDisableKeyCardPropertiesAndValues = ($objectDisableKeyCard.Keys | ForEach-Object {
-                        "$($_) = $($objectDisableKeyCard.$_)"
-                    }) -join " , "
+                # Create difference object from mapped properties
+                $keyCardDifferenceObject = [PSCustomObject]@{}
+                foreach ($keyCardAccountProperty in $keyCardAccount.PSObject.Properties) {
+                    $keyCardDifferenceObject | Add-Member -MemberType NoteProperty -Name $keyCardAccountProperty.Name -Value $keyCardAccountProperty.Value -Force
+                }
 
-                $queryDisableKeyCard = "
+                $keyCardSplatCompareProperties = @{
+                    ReferenceObject  = $keyCardReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToCompare }
+                    DifferenceObject = $keyCardDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToCompare }
+                }
+                if ($null -ne $keyCardSplatCompareProperties.ReferenceObject -and $null -ne $keyCardSplatCompareProperties.DifferenceObject) {
+                    $keyCardPropertiesChanged = Compare-Object @keyCardSplatCompareProperties -PassThru
+                    $keyCardOldProperties = $keyCardPropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
+                    $keyCardNewProperties = $keyCardPropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
+                }
+
+                if ($keyCardNewProperties) {
+                    $actionKeyCard = "Disable"
+                    Write-Information "Keycard property(s) required to update: $($keyCardNewProperties.Name -join ', ')"
+                }
+                else {
+                    $actionKeyCard = "NoChanges"
+                }
+
+                Write-Verbose "Compared current keyCard to mapped properties"
+            }
+            catch {
+                $ex = $PSItem
+
+                $auditMessage = "Error comparing current keyCard to mapped properties. Error: $($ex.Exception.Message)"
+                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+    
+                # Throw terminal error
+                throw $auditMessage
+            }
+        }
+        elseif (($correlatedKeyCard | Measure-Object).count -gt 1) {
+            $actionKeyCard = "MultipleFound"
+        }
+        elseif (($correlatedKeyCard | Measure-Object).count -eq 0) {
+            $actionKeyCard = "NotFound"
+        }
+
+        # Process
+        switch ($actionKeyCard) {
+            "Disable" {
+                #region Disable keycard
+                try {
+                    # Create object to disable keycard as empty hashtable
+                    $objectDisableKeyCard = @{}
+
+                    # Add the disabled properties to object to disable keycard
+                    foreach ($keyCardNewProperty in $keyCardNewProperties) {
+                        # Enclose specific fields with single quotes
+                        if ($keyCardNewProperty.Name -in $keyCardPropertiesToEncloseInSingleQuotes) {
+                            [void]$objectDisableKeyCard.Add("$($keyCardNewProperty.Name)", "'$($keyCardNewProperty.Value)'")
+                        }
+                        # Enclose specific fields with hashtags
+                        elseif ($keyCardNewProperty.Name -in $keyCardPropertiesToEncloseInHashtags) {
+                            [void]$objectDisableKeyCard.Add("$($keyCardNewProperty.Name)", "#$($keyCardNewProperty.Value)#")
+                        }
+                        else {
+                            [void]$objectDisableKeyCard.Add("$($keyCardNewProperty.Name)", "$($keyCardNewProperty.Value)")
+                        }
+                    }
+
+                    # Seperate Properties with comma , and enclose values with single quotes ''
+                    $queryDisableKeyCardPropertiesAndValues = ($objectDisableKeyCard.Keys | ForEach-Object {
+                            "$($_) = $($objectDisableKeyCard.$_)"
+                        }) -join " , "
+
+                    $queryDisableKeyCard = "
                 UPDATE
                     ACCESSKEY
                 SET
@@ -457,96 +458,98 @@ try {
                     $($keyCardCorrelationField) = $($keyCardCorrelationValue)
                 "
 
-                $disableKeyCardSplatParams = @{
-                    BaseUrl    = $actionContext.Configuration.BaseUrl
-                    JSessionID = $jSessionID
-                    Query      = $queryDisableKeyCard
-                    QueryType  = "update"
+                    $disableKeyCardSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryDisableKeyCard
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Disabling keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($disableKeyCardSplatParams | ConvertTo-Json)"   
+
+                        $disabledKeyCard = Invoke-IProtectQuery @disableKeyCardSplatParams
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = "Disabled keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json)"
+                                IsError = $false
+                            })
+
+                    }
+                    else {
+                        Write-Warning "DryRun: Would disable keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($disableKeyCardSplatParams | ConvertTo-Json)"
+                    }
                 }
+                catch {
+                    $ex = $PSItem
 
-                if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "Disabling keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($disableKeyCardSplatParams | ConvertTo-Json)"   
-
-                    $disabledKeyCard = Invoke-IProtectQuery @disableKeyCardSplatParams
+                    $auditMessage = "Error disabling keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             # Action  = "" # Optional
-                            Message = "Disabled keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json)"
-                            IsError = $false
+                            Message = $auditMessage
+                            IsError = $true
                         })
 
-                }
-                else {
-                    Write-Warning "DryRun: Would disable keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($disableKeyCardSplatParams | ConvertTo-Json)"
-                }
-            }
-            catch {
-                $ex = $PSItem
+                    # Log query
+                    Write-Warning "Query: $queryDisableKeyCard"
 
-                $auditMessage = "Error disabling keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Disable keycard
+
+                break
+            }
+
+            "NoChanges" {
+                $auditMessage = "Skipped disabling keyCard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Reason: No changes."
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = $auditMessage
+                        IsError = $false
+                    })
+                
+                break
+            }
+
+            "MultipleFound" {
+                $auditMessage = "Multiple keycards found where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Please correct this so the keycards are unique."
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = $auditMessage
                         IsError = $true
                     })
-
-                # Log query
-                Write-Warning "Query: $queryDisableKeyCard"
-
+        
                 # Throw terminal error
                 throw $auditMessage
+
+                break
             }
-            #endregion Disable keycard
 
-            break
-        }
-
-        "NoChanges" {
-            $auditMessage = "Skipped disabling keyCard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Reason: No changes."
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = $auditMessage
-                    IsError = $false
-                })
-                
-            break
-        }
-
-        "MultipleFound" {
-            $auditMessage = "Multiple keycards found where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Please correct this so the keycards are unique."
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $true
-                })
-        
-            # Throw terminal error
-            throw $auditMessage
-
-            break
-        }
-
-        "NotFound" {
-            $auditMessage = "Skipped disabling keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Reason: No keycard found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
+            "NotFound" {
+                $auditMessage = "Skipped disabling keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Reason: No keycard found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
     
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $false
-                })
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $false
+                    })
 
-            break
+                break
+            }
         }
     }
     #endregion KeyCard
 
     #region LicensePlate
-    #region Get current LicensePlate
-    try {
-        $queryCorrelateLicensePlate = "
+    if (-not [string]::IsNullOrEmpty($licensePlateCorrelationValue)) {
+        #region Get current LicensePlate
+        try {
+            $queryCorrelateLicensePlate = "
             SELECT
                 $($licensePlatePropertiesToQuery -Join ',')
             FROM
@@ -555,129 +558,129 @@ try {
                 $licensePlateCorrelationField = $($licensePlateCorrelationValue)
             "
 
-        $correlateLicensePlateSplatParams = @{
-            BaseUrl    = $actionContext.Configuration.BaseUrl
-            JSessionID = $jSessionID
-            Query      = $queryCorrelateLicensePlate
-            QueryType  = "query"
-        }
+            $correlateLicensePlateSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                Query      = $queryCorrelateLicensePlate
+                QueryType  = "query"
+            }
 
-        Write-Verbose "Querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. SplatParams: $($correlateLicensePlateSplatParams | ConvertTo-Json)"
+            Write-Verbose "Querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. SplatParams: $($correlateLicensePlateSplatParams | ConvertTo-Json)"
 
-        $correlatedLicensePlate = $null
-        $correlatedLicensePlate = Invoke-IProtectQuery @correlateLicensePlateSplatParams
+            $correlatedLicensePlate = $null
+            $correlatedLicensePlate = Invoke-IProtectQuery @correlateLicensePlateSplatParams
             
-        Write-Verbose "Queried licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Result: $($correlatedLicensePlate | Out-String)"
-    }
-    catch {
-        $ex = $PSItem
-
-        $auditMessage = "Error querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
-
-        # Log query
-        Write-Warning "Query: $queryCorrelateLicensePlate"
-        
-        # Throw terminal error
-        throw $auditMessage
-    }
-    #endregion Get current LicensePlate
-
-    if (($correlatedLicensePlate | Measure-Object).count -eq 1) {
-        try {
-            Write-Verbose "Comparing current licensePlate to mapped properties"
-
-            # Create reference object from correlated account
-            $licensePlateReferenceObject = [PSCustomObject]@{}
-            foreach ($correlatedLicensePlateProperty in $correlatedLicensePlate.PSObject.Properties) {
-                $licensePlateReferenceObject | Add-Member -MemberType NoteProperty -Name $correlatedLicensePlateProperty.Name -Value $correlatedLicensePlateProperty.Value -Force
-            }
-
-            # Create difference object from mapped properties
-            $licensePlateDifferenceObject = [PSCustomObject]@{}
-            foreach ($licensePlateAccountProperty in $licensePlateAccount.PSObject.Properties) {
-                $licensePlateDifferenceObject | Add-Member -MemberType NoteProperty -Name $licensePlateAccountProperty.Name -Value $licensePlateAccountProperty.Value -Force
-            }
-
-            $licensePlateSplatCompareProperties = @{
-                ReferenceObject  = $licensePlateReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToCompare }
-                DifferenceObject = $licensePlateDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToCompare }
-            }
-
-            if ($null -ne $licensePlateSplatCompareProperties.ReferenceObject -and $null -ne $licensePlateSplatCompareProperties.DifferenceObject) {
-                $licensePlatePropertiesChanged = Compare-Object @licensePlateSplatCompareProperties -PassThru
-                $licensePlateOldProperties = $licensePlatePropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
-                $licensePlateNewProperties = $licensePlatePropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
-            }
-
-            if ($licensePlateNewProperties) {
-                $actionLicensePlate = "Disable"
-                Write-Information "Licenseplate property(s) required to update: $($licensePlateNewProperties.Name -join ', ')"
-            }
-            else {
-                $actionLicensePlate = "NoChanges"
-            }
-
-            Write-Verbose "Compared current licensePlate to mapped properties"
+            Write-Verbose "Queried licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Result: $($correlatedLicensePlate | Out-String)"
         }
         catch {
             $ex = $PSItem
 
-            $auditMessage = "Error comparing current licensePlate to mapped properties. Error: $($ex.Exception.Message)"
+            $auditMessage = "Error querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Error: $($ex.Exception.Message)"
             Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-    
+
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = $auditMessage
                     IsError = $true
                 })
-    
+
+            # Log query
+            Write-Warning "Query: $queryCorrelateLicensePlate"
+        
             # Throw terminal error
             throw $auditMessage
         }
-    }
-    elseif (($correlatedLicensePlate | Measure-Object).count -gt 1) {
-        $actionLicensePlate = "MultipleFound"
-    }
-    elseif (($correlatedLicensePlate | Measure-Object).count -eq 0) {
-        $actionLicensePlate = "NotFound"
-    }
+        #endregion Get current LicensePlate
 
-    # Process
-    switch ($actionLicensePlate) {
-        "Disable" {
-            #region Disable licenseplate
+        if (($correlatedLicensePlate | Measure-Object).count -eq 1) {
             try {
-                # Create object to disable licenseplate as empty hashtable
-                $objectDisableLicensePlate = @{}
+                Write-Verbose "Comparing current licensePlate to mapped properties"
 
-                # Add the disabled properties to object to disable licenseplate
-                foreach ($licenseplateNewProperty in $licenseplateNewProperties) {
-                    # Enclose specific fields with single quotes
-                    if ($licenseplateNewProperty.Name -in $licenseplatePropertiesToEncloseInSingleQuotes) {
-                        [void]$objectDisableLicensePlate.Add("$($licenseplateNewProperty.Name)", "'$($licenseplateNewProperty.Value)'")
-                    }
-                    # Enclose specific fields with hashtags
-                    elseif ($licenseplateNewProperty.Name -in $licenseplatePropertiesToEncloseInHashtags) {
-                        [void]$objectDisableLicensePlate.Add("$($licenseplateNewProperty.Name)", "#$($licenseplateNewProperty.Value)#")
-                    }
-                    else {
-                        [void]$objectDisableLicensePlate.Add("$($licenseplateNewProperty.Name)", "$($licenseplateNewProperty.Value)")
-                    }
+                # Create reference object from correlated account
+                $licensePlateReferenceObject = [PSCustomObject]@{}
+                foreach ($correlatedLicensePlateProperty in $correlatedLicensePlate.PSObject.Properties) {
+                    $licensePlateReferenceObject | Add-Member -MemberType NoteProperty -Name $correlatedLicensePlateProperty.Name -Value $correlatedLicensePlateProperty.Value -Force
                 }
 
-                # Seperate Properties with comma , and enclose values with single quotes ''
-                $queryDisableLicensePlatePropertiesAndValues = ($objectDisableLicensePlate.Keys | ForEach-Object {
-                        "$($_) = $($objectDisableLicensePlate.$_)"
-                    }) -join " , "
+                # Create difference object from mapped properties
+                $licensePlateDifferenceObject = [PSCustomObject]@{}
+                foreach ($licensePlateAccountProperty in $licensePlateAccount.PSObject.Properties) {
+                    $licensePlateDifferenceObject | Add-Member -MemberType NoteProperty -Name $licensePlateAccountProperty.Name -Value $licensePlateAccountProperty.Value -Force
+                }
 
-                $queryDisableLicensePlate = "
+                $licensePlateSplatCompareProperties = @{
+                    ReferenceObject  = $licensePlateReferenceObject.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToCompare }
+                    DifferenceObject = $licensePlateDifferenceObject.PSObject.Properties | Where-Object { $_.Name -in $licensePlatePropertiesToCompare }
+                }
+
+                if ($null -ne $licensePlateSplatCompareProperties.ReferenceObject -and $null -ne $licensePlateSplatCompareProperties.DifferenceObject) {
+                    $licensePlatePropertiesChanged = Compare-Object @licensePlateSplatCompareProperties -PassThru
+                    $licensePlateOldProperties = $licensePlatePropertiesChanged | Where-Object { $_.SideIndicator -eq "<=" }
+                    $licensePlateNewProperties = $licensePlatePropertiesChanged | Where-Object { $_.SideIndicator -eq "=>" }
+                }
+
+                if ($licensePlateNewProperties) {
+                    $actionLicensePlate = "Disable"
+                    Write-Information "Licenseplate property(s) required to update: $($licensePlateNewProperties.Name -join ', ')"
+                }
+                else {
+                    $actionLicensePlate = "NoChanges"
+                }
+
+                Write-Verbose "Compared current licensePlate to mapped properties"
+            }
+            catch {
+                $ex = $PSItem
+
+                $auditMessage = "Error comparing current licensePlate to mapped properties. Error: $($ex.Exception.Message)"
+                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+    
+                # Throw terminal error
+                throw $auditMessage
+            }
+        }
+        elseif (($correlatedLicensePlate | Measure-Object).count -gt 1) {
+            $actionLicensePlate = "MultipleFound"
+        }
+        elseif (($correlatedLicensePlate | Measure-Object).count -eq 0) {
+            $actionLicensePlate = "NotFound"
+        }
+
+        # Process
+        switch ($actionLicensePlate) {
+            "Disable" {
+                #region Disable licenseplate
+                try {
+                    # Create object to disable licenseplate as empty hashtable
+                    $objectDisableLicensePlate = @{}
+
+                    # Add the disabled properties to object to disable licenseplate
+                    foreach ($licenseplateNewProperty in $licenseplateNewProperties) {
+                        # Enclose specific fields with single quotes
+                        if ($licenseplateNewProperty.Name -in $licenseplatePropertiesToEncloseInSingleQuotes) {
+                            [void]$objectDisableLicensePlate.Add("$($licenseplateNewProperty.Name)", "'$($licenseplateNewProperty.Value)'")
+                        }
+                        # Enclose specific fields with hashtags
+                        elseif ($licenseplateNewProperty.Name -in $licenseplatePropertiesToEncloseInHashtags) {
+                            [void]$objectDisableLicensePlate.Add("$($licenseplateNewProperty.Name)", "#$($licenseplateNewProperty.Value)#")
+                        }
+                        else {
+                            [void]$objectDisableLicensePlate.Add("$($licenseplateNewProperty.Name)", "$($licenseplateNewProperty.Value)")
+                        }
+                    }
+
+                    # Seperate Properties with comma , and enclose values with single quotes ''
+                    $queryDisableLicensePlatePropertiesAndValues = ($objectDisableLicensePlate.Keys | ForEach-Object {
+                            "$($_) = $($objectDisableLicensePlate.$_)"
+                        }) -join " , "
+
+                    $queryDisableLicensePlate = "
                 UPDATE
                     ACCESSKEY
                 SET
@@ -686,87 +689,88 @@ try {
                     $($licensePlateCorrelationField) = $($licensePlateCorrelationValue)
                 "
 
-                $disableLicensePlateSplatParams = @{
-                    BaseUrl    = $actionContext.Configuration.BaseUrl
-                    JSessionID = $jSessionID
-                    Query      = $queryDisableLicensePlate
-                    QueryType  = "update"
+                    $disableLicensePlateSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryDisableLicensePlate
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Disabling licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($disableLicensePlateSplatParams | ConvertTo-Json)"   
+
+                        $disabledLicensePlate = Invoke-IProtectQuery @disableLicensePlateSplatParams
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = "Disabled licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json)"
+                                IsError = $false
+                            })
+                    }
+                    else {
+                        Write-Warning "DryRun: Would disable licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($disableLicensePlateSplatParams | ConvertTo-Json)"
+                    }
                 }
+                catch {
+                    $ex = $PSItem
 
-                if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "Disabling licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($disableLicensePlateSplatParams | ConvertTo-Json)"   
-
-                    $disabledLicensePlate = Invoke-IProtectQuery @disableLicensePlateSplatParams
+                    $auditMessage = "Error disabling licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             # Action  = "" # Optional
-                            Message = "Disabled licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json)"
-                            IsError = $false
+                            Message = $auditMessage
+                            IsError = $true
                         })
-                }
-                else {
-                    Write-Warning "DryRun: Would disable licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($disableLicensePlateSplatParams | ConvertTo-Json)"
-                }
-            }
-            catch {
-                $ex = $PSItem
 
-                $auditMessage = "Error disabling licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                    # Log query
+                    Write-Warning "Query: $queryDisableLicensePlate"
+
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Disable licenseplate
+
+                break
+            }
+
+            "NoChanges" {
+                $auditMessage = "Skipped disabling licensePlate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Reason: No changes."
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = $auditMessage
+                        IsError = $false
+                    })
+                
+                break
+            }
+
+            "MultipleFound" {
+                $auditMessage = "Multiple licenseplates found where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Please correct this so the licenseplates are unique."
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = $auditMessage
                         IsError = $true
                     })
-
-                # Log query
-                Write-Warning "Query: $queryDisableLicensePlate"
-
+        
                 # Throw terminal error
                 throw $auditMessage
+
+                break
             }
-            #endregion Disable licenseplate
 
-            break
-        }
-
-        "NoChanges" {
-            $auditMessage = "Skipped disabling licensePlate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Reason: No changes."
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = $auditMessage
-                    IsError = $false
-                })
-                
-            break
-        }
-
-        "MultipleFound" {
-            $auditMessage = "Multiple licenseplates found where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Please correct this so the licenseplates are unique."
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $true
-                })
-        
-            # Throw terminal error
-            throw $auditMessage
-
-            break
-        }
-
-        "NotFound" {
-            $auditMessage = "Skipped disabling licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Reason: No licenseplate found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
+            "NotFound" {
+                $auditMessage = "Skipped disabling licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Reason: No licenseplate found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
     
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $false
-                })
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $false
+                    })
 
-            break
+                break
+            }
         }
     }
     #endregion LicensePlate
@@ -782,11 +786,6 @@ finally {
     }
     else {
         $outputContext.Success = $true
-    }
-
-    # Check if accountreference is set, if not set, set this with default value as this must contain a value
-    if ([String]::IsNullOrEmpty($outputContext.AccountReference)) {
-        $outputContext.AccountReference = "Currently not available"
     }
 
     if ($null -ne $script:WebSession) {

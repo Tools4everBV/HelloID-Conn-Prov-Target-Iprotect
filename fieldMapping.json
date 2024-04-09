@@ -156,41 +156,6 @@
       ]
     },
     {
-      "Name": "LicensePlate.VALID",
-      "Description": "0 = False, 1 = True\nNote: Case senitive!",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"1\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        },
-        {
-          "MapForActions": [
-            "Enable"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"1\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        },
-        {
-          "MapForActions": [
-            "Disable"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"0\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        }
-      ]
-    },
-    {
       "Name": "LicensePlate.RCN",
       "Description": "Note: Case senitive!",
       "Type": "Text",
@@ -219,57 +184,6 @@
           ],
           "MappingMode": "Field",
           "Value": "\"Person.Custom.kaartnummer\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        }
-      ]
-    },
-    {
-      "Name": "Person.FIRSTNAME",
-      "Description": "[Required] Used for correlation\nNote: Case senitive!",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"// Mapping logic to generate the PersonFirstName according to the following convention.\\r\\nfunction generatePersonFirstName() {\\r\\n    let personFirstName = Person.Name.NickName;\\r\\n\\r\\n    // Trim spaces at start and end\\r\\n    personFirstName = personFirstName.trim();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    personFirstName = deleteDiacriticalMarks(personFirstName);\\r\\n\\r\\n    return personFirstName;\\r\\n}\\r\\n\\r\\ngeneratePersonFirstName();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        }
-      ]
-    },
-    {
-      "Name": "Person.NAME",
-      "Description": "[Required] Used for correlation\nNote: Case senitive!",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"// Mapping logic to generate the PersonName according to the following convention.\\r\\n// First choice\\t        B\\tvan den boele\\r\\n// \\t                    BP\\tvan den boele\\r\\n// \\t                    P\\tde Vries\\r\\n// \\t                    PB  van den boele\\r\\nfunction generatePersonName() {\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let personName = '';\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n            personName = personName + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            personName = personName + lastName;\\r\\n            break;\\r\\n    }\\r\\n    // Trim spaces at start and end\\r\\n    personName = personName.trim();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    personName = deleteDiacriticalMarks(personName);\\r\\n\\r\\n    return personName;\\r\\n}\\r\\n\\r\\ngeneratePersonName();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": true
-        }
-      ]
-    },
-    {
-      "Name": "Person.PREFIX",
-      "Description": "[Optional]\nNote: Case senitive!",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"// Mapping logic to generate the PersonPrefix according to the following convention.\\r\\n// First choice\\t        B\\tvan den\\r\\n// \\t                    BP\\tvan den\\r\\n// \\t                    P\\tde Vries\\r\\n// \\t                    PB  van den\\r\\nfunction generatePersonPrefix() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let personPrefix = '';\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n            personPrefix = personPrefix + middleNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            personPrefix = personPrefix + middleName;\\r\\n            break;\\r\\n    }\\r\\n    // Trim spaces at start and end\\r\\n    personPrefix = personPrefix.trim();\\r\\n\\r\\n    // Remove diacritical chars\\r\\n    personPrefix = deleteDiacriticalMarks(personPrefix);\\r\\n\\r\\n    return personPrefix;\\r\\n}\\r\\n\\r\\ngeneratePersonPrefix();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         }
@@ -389,6 +303,92 @@
           ],
           "MappingMode": "None",
           "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "LicensePlate.VALID",
+      "Description": "0 = False, 1 = True\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Enable"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"1\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Disable"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"0\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.NAME",
+      "Description": "[Required] Used for correlation\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonName according to the following convention.\\r\\n// First choice\\t        B\\tvan den boele\\r\\n// \\t                    BP\\tvan den boele\\r\\n// \\t                    P\\tde Vries\\r\\n// \\t                    PB  van den boele\\r\\nfunction generatePersonName() {\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let personName = '';\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n            if (typeof lastNamePartner !== 'undefined' && lastNamePartner) {\\r\\n                personName = personName + lastNamePartner;\\r\\n            }\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n        if (typeof lastName !== 'undefined' && lastName) {\\r\\n                personName = personName + lastName;\\r\\n            }\\r\\n            break;\\r\\n    }\\r\\n    if (typeof personName !== 'undefined' && personName) {\\r\\n        // Trim spaces at start and end\\r\\n        personName = personName.trim();\\r\\n\\r\\n        // Remove diacritical chars\\r\\n        personName = deleteDiacriticalMarks(personName);\\r\\n\\r\\n        // Escape single quotes\\r\\n        personName = personName.replace(\\\"'\\\",\\\"\\\\\\\\'\\\");\\r\\n    }\\r\\n\\r\\n    return personName;\\r\\n}\\r\\n\\r\\ngeneratePersonName();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.PREFIX",
+      "Description": "[Optional]\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonPrefix according to the following convention.\\r\\n// First choice\\t        B\\tvan den\\r\\n// \\t                    BP\\tvan den\\r\\n// \\t                    P\\tde Vries\\r\\n// \\t                    PB  van den\\r\\nfunction generatePersonPrefix() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let personPrefix = '';\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) {\\r\\n                personPrefix = personPrefix + middleNamePartner;\\r\\n            }\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            if (typeof middleName !== 'undefined' && middleName) {\\r\\n                personPrefix = personPrefix + middleName;\\r\\n            }\\r\\n            break;\\r\\n    }\\r\\n    if (typeof personPrefix !== 'undefined' && personPrefix) {\\r\\n        // Trim spaces at start and end\\r\\n        personPrefix = personPrefix.trim();\\r\\n\\r\\n        // Remove diacritical chars\\r\\n        personPrefix = deleteDiacriticalMarks(personPrefix);\\r\\n\\r\\n        // Escape single quotes\\r\\n        personPrefix = personPrefix.replace(\\\"'\\\",\\\"\\\\\\\\'\\\");\\r\\n    }\\r\\n\\r\\n    return personPrefix;\\r\\n}\\r\\n\\r\\ngeneratePersonPrefix();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.FIRSTNAME",
+      "Description": "[Required] Used for correlation\nNote: Case senitive!",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Mapping logic to generate the PersonFirstName according to the following convention.\\r\\nfunction generatePersonFirstName() {\\r\\n    let personFirstName = Person.Name.NickName;\\r\\n\\r\\n    if (typeof personFirstName !== 'undefined' && personFirstName) {\\r\\n        // Trim spaces at start and end\\r\\n        personFirstName = personFirstName.trim();\\r\\n\\r\\n        // Remove diacritical chars\\r\\n        personFirstName = deleteDiacriticalMarks(personFirstName);\\r\\n\\r\\n        // Escape single quotes\\r\\n        personFirstName = personFirstName.replace(\\\"'\\\",\\\"\\\\\\\\'\\\");\\r\\n    }\\r\\n\\r\\n    return personFirstName;\\r\\n}\\r\\n\\r\\ngeneratePersonFirstName();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         }

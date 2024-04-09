@@ -1,5 +1,5 @@
 #####################################################
-# HelloID-Conn-Prov-Target-iProtect-SubPermissions-KeyGroups-KeyCard
+# HelloID-Conn-Prov-Target-iProtect-SubPermissions-KeyGroups-KeyCard-Revoke
 # PowerShell V2
 #################################################
 # Enable TLS1.2
@@ -346,7 +346,7 @@ try {
     $desiredPermissions = @{ }
     if (-Not($actionContext.Operation -eq "revoke")) {
         # Person Based Logic
-        $iProtectGroups = $p.Custom.iProtectGroups -split ","
+        $iProtectGroups = $personContext.Person.Custom.iProtectGroups -split "\|"
         Write-Verbose "iProtectGroups: $($iProtectGroups | ConvertTo-Json)"
         if (-not[String]::IsNullOrEmpty($iProtectGroups)) {
             foreach ($iProtectGroup in $iProtectGroups) {

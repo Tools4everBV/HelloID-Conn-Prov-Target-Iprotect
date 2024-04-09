@@ -30,6 +30,16 @@
         }
     },
     {
+        "key": "UpdatePersonOnCreate",
+        "type": "checkbox",
+        "defaultValue": true,
+        "templateOptions": {
+            "label": "Update Person On Create",
+            "description": "When toggled, the person object will be updated in the creat action",
+            "required": false
+        }
+    },
+    {
         "key": "IsDebug",
         "type": "checkbox",
         "defaultValue": false,

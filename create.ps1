@@ -368,17 +368,17 @@ try {
             QueryType  = "query"
         }
 
-        Write-Verbose "Querying person where [SALARYNR] = [$($personAccount.SALARYNR)]. SplatParams: $($correlatePersonSplatParams | ConvertTo-Json)"
+        Write-Verbose "Querying person where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. SplatParams: $($correlatePersonSplatParams | ConvertTo-Json)"
 
         $correlatedPerson = $null
         $correlatedPerson = Invoke-IProtectQuery @correlatePersonSplatParams
             
-        Write-Verbose "Queried person where [SALARYNR] = [$($personAccount.SALARYNR)]. Result: $($correlatedPerson | Out-String)"
+        Write-Verbose "Queried person where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. Result: $($correlatedPerson | Out-String)"
     }
     catch {
         $ex = $PSItem
 
-        $auditMessage = "Error querying person where [SALARYNR] = [$($personAccount.SALARYNR)]. Error: $($ex.Exception.Message)"
+        $auditMessage = "Error querying person where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
         $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -570,7 +570,7 @@ try {
         }
 
         "MultipleFound" {
-            $auditMessage = "Multiple persons found where [SALARYNR] = [$($personAccount.SALARYNR)]. Please correct this so the persons are unique."
+            $auditMessage = "Multiple persons found where [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)]. Please correct this so the persons are unique."
 
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional

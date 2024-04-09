@@ -316,9 +316,10 @@ try {
     #endregion Authenticate to iProtect
 
     #region KeyCard
-    #region Get current KeyCard
-    try {
-        $queryCorrelateKeyCard = "
+    if (-not [string]::IsNullOrEmpty($keyCardCorrelationValue)) {
+        #region Get current KeyCard
+        try {
+            $queryCorrelateKeyCard = "
             SELECT
                 $($keyCardPropertiesToQuery -Join ',')
             FROM
@@ -327,57 +328,57 @@ try {
                 $keyCardCorrelationField = $($keyCardCorrelationValue)
             "
 
-        $correlateKeyCardSplatParams = @{
-            BaseUrl    = $actionContext.Configuration.BaseUrl
-            JSessionID = $jSessionID
-            Query      = $queryCorrelateKeyCard
-            QueryType  = "query"
+            $correlateKeyCardSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                Query      = $queryCorrelateKeyCard
+                QueryType  = "query"
+            }
+
+            Write-Verbose "Querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. SplatParams: $($correlateKeyCardSplatParams | ConvertTo-Json)"
+
+            $correlatedKeyCard = $null
+            $correlatedKeyCard = Invoke-IProtectQuery @correlateKeyCardSplatParams
+            
+            Write-Verbose "Queried keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Result: $($correlatedKeyCard | Out-String)"
+        }
+        catch {
+            $ex = $PSItem
+
+            $auditMessage = "Error querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
+            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = $auditMessage
+                    IsError = $true
+                })
+
+            # Log query
+            Write-Warning "Query: $queryCorrelateKeyCard"
+        
+            # Throw terminal error
+            throw $auditMessage
+        }
+        #endregion Get current KeyCard
+
+        if (($correlatedKeyCard | Measure-Object).count -eq 1) {
+            $actionKeyCard = "Delete"
+        }
+        elseif (($correlatedKeyCard | Measure-Object).count -gt 1) {
+            $actionKeyCard = "MultipleFound"
+        }
+        elseif (($correlatedKeyCard | Measure-Object).count -eq 0) {
+            $actionKeyCard = "NotFound"
         }
 
-        Write-Verbose "Querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. SplatParams: $($correlateKeyCardSplatParams | ConvertTo-Json)"
-
-        $correlatedKeyCard = $null
-        $correlatedKeyCard = Invoke-IProtectQuery @correlateKeyCardSplatParams
-            
-        Write-Verbose "Queried keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Result: $($correlatedKeyCard | Out-String)"
-    }
-    catch {
-        $ex = $PSItem
-
-        $auditMessage = "Error querying keycard where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
-
-        # Log query
-        Write-Warning "Query: $queryCorrelateKeyCard"
-        
-        # Throw terminal error
-        throw $auditMessage
-    }
-    #endregion Get current KeyCard
-
-    if (($correlatedKeyCard | Measure-Object).count -eq 1) {
-        $actionKeyCard = "Delete"
-    }
-    elseif (($correlatedKeyCard | Measure-Object).count -gt 1) {
-        $actionKeyCard = "MultipleFound"
-    }
-    elseif (($correlatedKeyCard | Measure-Object).count -eq 0) {
-        $actionKeyCard = "NotFound"
-    }
-
-    # Process
-    switch ($actionKeyCard) {
-        "Delete" {
-            #region 20230703-021 - GK - Delete all assigned groups from badge
-            #region Retrieve current permissions of keycard
-            try {
-                $queryGetPermissionsKeyCard = "
+        # Process
+        switch ($actionKeyCard) {
+            "Delete" {
+                #region 20230703-021 - GK - Delete all assigned groups from badge
+                #region Retrieve current permissions of keycard
+                try {
+                    $queryGetPermissionsKeyCard = "
                 SELECT
                     ACCESSKEYID,
                     KEYGROUPID,
@@ -388,46 +389,46 @@ try {
                     $($keyCardCorrelationField) = $($keyCardCorrelationValue)
                 "
 
-                $getPermissionsKeyCardSplatParams = @{
-                    BaseUrl    = $actionContext.Configuration.BaseUrl
-                    JSessionID = $jSessionID
-                    Query      = $queryGetPermissionsKeyCard
-                    QueryType  = "query"
+                    $getPermissionsKeyCardSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryGetPermissionsKeyCard
+                        QueryType  = "query"
+                    }
+
+                    Write-Verbose "Querying permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. SplatParams: $($getPermissionsKeyCardSplatParams | ConvertTo-Json)"
+
+                    $currentPermissionsKeyCard = $null
+                    $currentPermissionsKeyCard = Invoke-IProtectQuery @getPermissionsKeyCardSplatParams
+
+                    Write-Verbose "Queried permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Result: $($currentPermissionsKeyCard | Out-String)"
                 }
+                catch {
+                    $ex = $PSItem
 
-                Write-Verbose "Querying permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. SplatParams: $($getPermissionsKeyCardSplatParams | ConvertTo-Json)"
+                    $auditMessage = "Error querying permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
-                $currentPermissionsKeyCard = $null
-                $currentPermissionsKeyCard = Invoke-IProtectQuery @getPermissionsKeyCardSplatParams
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
 
-                Write-Verbose "Queried permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Result: $($currentPermissionsKeyCard | Out-String)"
-            }
-            catch {
-                $ex = $PSItem
+                    # Log query
+                    Write-Warning "Query: $queryGetPermissionsKeyCard"
 
-                $auditMessage = "Error querying permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Retrieve current permissions of keycard
 
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = $auditMessage
-                        IsError = $true
-                    })
-
-                # Log query
-                Write-Warning "Query: $queryGetPermissionsKeyCard"
-
-                # Throw terminal error
-                throw $auditMessage
-            }
-            #endregion Retrieve current permissions of keycard
-
-            #region Delete current permissions of keycard
-            if (($currentPermissionsKeyCard | Measure-Object).Count -ge 1) {
-                foreach ($currentPermissionKeyCard in $currentPermissionsKeyCard) {
-                    #region Delete permission of keycard
-                    try {
-                        $queryDeletePermissionKeyCard = "
+                #region Delete current permissions of keycard
+                if (($currentPermissionsKeyCard | Measure-Object).Count -ge 1) {
+                    foreach ($currentPermissionKeyCard in $currentPermissionsKeyCard) {
+                        #region Delete permission of keycard
+                        try {
+                            $queryDeletePermissionKeyCard = "
                         DELETE
                         FROM
                             KEYKEYGROUP
@@ -435,61 +436,61 @@ try {
                             KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)
                         "
         
-                        $deletePermissionKeyCardSplatParams = @{
-                            BaseUrl    = $actionContext.Configuration.BaseUrl
-                            JSessionID = $jSessionID
-                            Query      = $querydeletePermissionKeyCard
-                            QueryType  = "update"
-                        }
+                            $deletePermissionKeyCardSplatParams = @{
+                                BaseUrl    = $actionContext.Configuration.BaseUrl
+                                JSessionID = $jSessionID
+                                Query      = $querydeletePermissionKeyCard
+                                QueryType  = "update"
+                            }
             
-                        Write-Verbose "Deleting permission of keycard where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)]. SplatParams: $($deletePermissionKeyCardSplatParams | ConvertTo-Json)"
+                            Write-Verbose "Deleting permission of keycard where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)]. SplatParams: $($deletePermissionKeyCardSplatParams | ConvertTo-Json)"
             
-                        $deletedPermissionKeyCard = $null
-                        $deletedPermissionKeyCard = Invoke-IProtectQuery @deletePermissionKeyCardSplatParams
+                            $deletedPermissionKeyCard = $null
+                            $deletedPermissionKeyCard = Invoke-IProtectQuery @deletePermissionKeyCardSplatParams
     
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Deleted permission of keycard where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)]"
-                                IsError = $false
-                            })
-                    }
-                    catch {
-                        $ex = $PSItem
+                            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                    # Action  = "" # Optional
+                                    Message = "Deleted permission of keycard where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)]"
+                                    IsError = $false
+                                })
+                        }
+                        catch {
+                            $ex = $PSItem
 
-                        $auditMessage = "Error deleting permission of keycard where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)]. Error: $($ex.Exception.Message)"
-                        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                            $auditMessage = "Error deleting permission of keycard where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)]. Error: $($ex.Exception.Message)"
+                            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = $auditMessage
-                                IsError = $true
-                            })
+                            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                    # Action  = "" # Optional
+                                    Message = $auditMessage
+                                    IsError = $true
+                                })
             
-                        # Log query
-                        Write-Warning "Query: $querydeletePermissionKeyCard"
+                            # Log query
+                            Write-Warning "Query: $querydeletePermissionKeyCard"
             
-                        # Throw terminal error
-                        throw $auditMessage
+                            # Throw terminal error
+                            throw $auditMessage
+                        }
+                        #endregion Delete permission of keycard
                     }
-                    #endregion Delete permission of keycard
+                    #endregion Delete current permissions of keycard
                 }
-                #endregion Delete current permissions of keycard
-            }
-            else {
-                $auditMessage = "Skipped deleting permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Reason: No permissions found where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]."
+                else {
+                    $auditMessage = "Skipped deleting permissions of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Reason: No permissions found where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]."
 
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = $auditMessage
-                        IsError = $false
-                    })
-            }
-            #endregion 20230703-021 - GK - Delete all assigned groups from badge
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $false
+                        })
+                }
+                #endregion 20230703-021 - GK - Delete all assigned groups from badge
 
-            #region 20230703-021 - GK - Delete offline access rights
-            #region Check if offline access rights for keycard exists
-            try {
-                $queryGetOfflineAccessRightsKeyCard = "
+                #region 20230703-021 - GK - Delete offline access rights
+                #region Check if offline access rights for keycard exists
+                try {
+                    $queryGetOfflineAccessRightsKeyCard = "
                 SELECT
                     *
                 FROM
@@ -498,44 +499,44 @@ try {
                     $($keyCardCorrelationField) = $($keyCardCorrelationValue)
                 "
 
-                $GetOfflineAccessRightsKeyCardSplatParams = @{
-                    BaseUrl    = $actionContext.Configuration.BaseUrl
-                    JSessionID = $jSessionID
-                    Query      = $queryGetOfflineAccessRightsKeyCard
-                    QueryType  = "query"
+                    $GetOfflineAccessRightsKeyCardSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryGetOfflineAccessRightsKeyCard
+                        QueryType  = "query"
+                    }
+
+                    Write-Verbose "Querying offline access rights for keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. SplatParams: $($GetOfflineAccessRightsKeyCardSplatParams | ConvertTo-Json)"
+
+                    $currentOfflineAccessRightsKeyCard = $null
+                    $currentOfflineAccessRightsKeyCard = Invoke-IProtectQuery @GetOfflineAccessRightsKeyCardSplatParams
+
+                    Write-Verbose "Queried offline access rights for keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Result: $($currentOfflineAccessRightsKeyCard | Out-String)"
                 }
+                catch {
+                    $ex = $PSItem
 
-                Write-Verbose "Querying offline access rights for keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. SplatParams: $($GetOfflineAccessRightsKeyCardSplatParams | ConvertTo-Json)"
+                    $auditMessage = "Error querying offline access rights for keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
-                $currentOfflineAccessRightsKeyCard = $null
-                $currentOfflineAccessRightsKeyCard = Invoke-IProtectQuery @GetOfflineAccessRightsKeyCardSplatParams
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            # Action  = "" # Optional
+                            Message = $auditMessage
+                            IsError = $true
+                        })
 
-                Write-Verbose "Queried offline access rights for keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Result: $($currentOfflineAccessRightsKeyCard | Out-String)"
-            }
-            catch {
-                $ex = $PSItem
+                    # Log query
+                    Write-Warning "Query: $queryGetOfflineAccessRightsKeyCard"
 
-                $auditMessage = "Error querying offline access rights for keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Check if offline access rights for keycard exists
 
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = $auditMessage
-                        IsError = $true
-                    })
-
-                # Log query
-                Write-Warning "Query: $queryGetOfflineAccessRightsKeyCard"
-
-                # Throw terminal error
-                throw $auditMessage
-            }
-            #endregion Check if offline access rights for keycard exists
-
-            if (($currentOfflineAccessRightsKeyCard | Measure-Object).Count -ge 1) {
-                #region Delete offline access rights for keycard
-                try {
-                    $queryDeleteOfflineAccessRightsKeyCard = "
+                if (($currentOfflineAccessRightsKeyCard | Measure-Object).Count -ge 1) {
+                    #region Delete offline access rights for keycard
+                    try {
+                        $queryDeleteOfflineAccessRightsKeyCard = "
                     DELETE
                         *
                     FROM
@@ -544,58 +545,58 @@ try {
                         $($keyCardCorrelationField) = $($keyCardCorrelationValue)
                     "
     
-                    $deleteOfflineAccessRightsKeyCardSplatParams = @{
-                        BaseUrl    = $actionContext.Configuration.BaseUrl
-                        JSessionID = $jSessionID
-                        Query      = $querydeleteOfflineAccessRightsKeyCard
-                        QueryType  = "update"
+                        $deleteOfflineAccessRightsKeyCardSplatParams = @{
+                            BaseUrl    = $actionContext.Configuration.BaseUrl
+                            JSessionID = $jSessionID
+                            Query      = $querydeleteOfflineAccessRightsKeyCard
+                            QueryType  = "update"
+                        }
+        
+                        Write-Verbose "Deleting offline access rights of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. SplatParams: $($deleteOfflineAccessRightsKeyCardSplatParams | ConvertTo-Json)"
+        
+                        $deletedOfflineAccessRightsKeyCard = $null
+                        $deletedOfflineAccessRightsKeyCard = Invoke-IProtectQuery @deleteOfflineAccessRightsKeyCardSplatParams
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = "Deleted offline access rights of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]"
+                                IsError = $false
+                            })
                     }
-        
-                    Write-Verbose "Deleting offline access rights of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. SplatParams: $($deleteOfflineAccessRightsKeyCardSplatParams | ConvertTo-Json)"
-        
-                    $deletedOfflineAccessRightsKeyCard = $null
-                    $deletedOfflineAccessRightsKeyCard = Invoke-IProtectQuery @deleteOfflineAccessRightsKeyCardSplatParams
+                    catch {
+                        $ex = $PSItem
 
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Deleted offline access rights of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]"
-                            IsError = $false
-                        })
+                        $auditMessage = "Error deleting offline access rights of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
+                        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = $auditMessage
+                                IsError = $true
+                            })
+        
+                        # Log query
+                        Write-Warning "Query: $querydeleteOfflineAccessRightsKeyCard"
+        
+                        # Throw terminal error
+                        throw $auditMessage
+                    }
+                    #endregion Delete offline access rights for keycard
                 }
-                catch {
-                    $ex = $PSItem
+                else {
+                    $auditMessage = "Skipped deleting offline access rights from the keycard. Reason: No offline access rights found where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]."
 
-                    $auditMessage = "Error deleting offline access rights of keycard where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]. Error: $($ex.Exception.Message)"
-                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-        
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             # Action  = "" # Optional
                             Message = $auditMessage
-                            IsError = $true
+                            IsError = $false
                         })
-        
-                    # Log query
-                    Write-Warning "Query: $querydeleteOfflineAccessRightsKeyCard"
-        
-                    # Throw terminal error
-                    throw $auditMessage
                 }
-                #endregion Delete offline access rights for keycard
-            }
-            else {
-                $auditMessage = "Skipped deleting offline access rights from the keycard. Reason: No offline access rights found where [$($keyCardCorrelationField) = $($keyCardCorrelationValue)]."
+                #endregion 20230703-021 - GK - Delete offline access rights
 
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = $auditMessage
-                        IsError = $false
-                    })
-            }
-            #endregion 20230703-021 - GK - Delete offline access rights
-
-            #region Delete keycard
-            try {
-                $queryDeleteKeyCard = "
+                #region Delete keycard
+                try {
+                    $queryDeleteKeyCard = "
                 DELETE
                 FROM
                     ACCESSKEY
@@ -603,85 +604,87 @@ try {
                     $($keyCardCorrelationField) = $($keyCardCorrelationValue)
                 "
 
-                $deleteKeyCardSplatParams = @{
-                    BaseUrl    = $actionContext.Configuration.BaseUrl
-                    JSessionID = $jSessionID
-                    Query      = $queryDeleteKeyCard
-                    QueryType  = "update"
+                    $deleteKeyCardSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryDeleteKeyCard
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Deleting keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($deleteKeyCardSplatParams | ConvertTo-Json)"   
+
+                        $deletedKeyCard = Invoke-IProtectQuery @deleteKeyCardSplatParams
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = "Deleted keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json)"
+                                IsError = $false
+                            })
+
+                    }
+                    else {
+                        Write-Warning "DryRun: Would delete keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($deleteKeyCardSplatParams | ConvertTo-Json)"
+                    }
                 }
+                catch {
+                    $ex = $PSItem
 
-                if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "Deleting keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($deleteKeyCardSplatParams | ConvertTo-Json)"   
-
-                    $deletedKeyCard = Invoke-IProtectQuery @deleteKeyCardSplatParams
+                    $auditMessage = "Error deleting keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             # Action  = "" # Optional
-                            Message = "Deleted keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json)"
-                            IsError = $false
+                            Message = $auditMessage
+                            IsError = $true
                         })
 
-                }
-                else {
-                    Write-Warning "DryRun: Would delete keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). SplatParams: $($deleteKeyCardSplatParams | ConvertTo-Json)"
-                }
-            }
-            catch {
-                $ex = $PSItem
+                    # Log query
+                    Write-Warning "Query: $queryDeleteKeyCard"
 
-                $auditMessage = "Error deleting keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Delete keycard
+
+                break
+            }
+
+            "MultipleFound" {
+                $auditMessage = "Multiple keycards found where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Please correct this so the keycards are unique."
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = $auditMessage
                         IsError = $true
                     })
-
-                # Log query
-                Write-Warning "Query: $queryDeleteKeyCard"
-
+        
                 # Throw terminal error
                 throw $auditMessage
+
+                break
             }
-            #endregion Delete keycard
 
-            break
-        }
-
-        "MultipleFound" {
-            $auditMessage = "Multiple keycards found where [$keyCardCorrelationField] = [$($keyCardCorrelationValue)]. Please correct this so the keycards are unique."
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $true
-                })
-        
-            # Throw terminal error
-            throw $auditMessage
-
-            break
-        }
-
-        "NotFound" {
-            $auditMessage = "Skipped deleting keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Reason: No keycard found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
+            "NotFound" {
+                $auditMessage = "Skipped deleting keycard with AccountReference: $($actionContext.References.Account.KeyCard | ConvertTo-Json). Reason: No keycard found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
     
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $false
-                })
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $false
+                    })
     
-            break
+                break
+            }
         }
     }
     #endregion KeyCard
 
     #region LicensePlate
-    #region Get current LicensePlate
-    try {
-        $queryCorrelateLicensePlate = "
+    if (-not [string]::IsNullOrEmpty($licensePlateCorrelationValue)) {
+        #region Get current LicensePlate
+        try {
+            $queryCorrelateLicensePlate = "
             SELECT
                 $($licensePlatePropertiesToQuery -Join ',')
             FROM
@@ -690,56 +693,56 @@ try {
                 $licensePlateCorrelationField = $($licensePlateCorrelationValue)
             "
 
-        $correlateLicensePlateSplatParams = @{
-            BaseUrl    = $actionContext.Configuration.BaseUrl
-            JSessionID = $jSessionID
-            Query      = $queryCorrelateLicensePlate
-            QueryType  = "query"
+            $correlateLicensePlateSplatParams = @{
+                BaseUrl    = $actionContext.Configuration.BaseUrl
+                JSessionID = $jSessionID
+                Query      = $queryCorrelateLicensePlate
+                QueryType  = "query"
+            }
+
+            Write-Verbose "Querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. SplatParams: $($correlateLicensePlateSplatParams | ConvertTo-Json)"
+
+            $correlatedLicensePlate = $null
+            $correlatedLicensePlate = Invoke-IProtectQuery @correlateLicensePlateSplatParams
+            
+            Write-Verbose "Queried licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Result: $($correlatedLicensePlate | Out-String)"
+        }
+        catch {
+            $ex = $PSItem
+
+            $auditMessage = "Error querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Error: $($ex.Exception.Message)"
+            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = $auditMessage
+                    IsError = $true
+                })
+
+            # Log query
+            Write-Warning "Query: $queryCorrelateLicensePlate"
+        
+            # Throw terminal error
+            throw $auditMessage
+        }
+        #endregion Get current LicensePlate
+
+        if (($correlatedLicensePlate | Measure-Object).count -eq 1) {
+            $actionLicensePlate = "Delete"
+        }
+        elseif (($correlatedLicensePlate | Measure-Object).count -gt 1) {
+            $actionLicensePlate = "MultipleFound"
+        }
+        elseif (($correlatedLicensePlate | Measure-Object).count -eq 0) {
+            $actionLicensePlate = "NotFound"
         }
 
-        Write-Verbose "Querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. SplatParams: $($correlateLicensePlateSplatParams | ConvertTo-Json)"
-
-        $correlatedLicensePlate = $null
-        $correlatedLicensePlate = Invoke-IProtectQuery @correlateLicensePlateSplatParams
-            
-        Write-Verbose "Queried licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Result: $($correlatedLicensePlate | Out-String)"
-    }
-    catch {
-        $ex = $PSItem
-
-        $auditMessage = "Error querying licenseplate where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
-
-        # Log query
-        Write-Warning "Query: $queryCorrelateLicensePlate"
-        
-        # Throw terminal error
-        throw $auditMessage
-    }
-    #endregion Get current LicensePlate
-
-    if (($correlatedLicensePlate | Measure-Object).count -eq 1) {
-        $actionLicensePlate = "Delete"
-    }
-    elseif (($correlatedLicensePlate | Measure-Object).count -gt 1) {
-        $actionLicensePlate = "MultipleFound"
-    }
-    elseif (($correlatedLicensePlate | Measure-Object).count -eq 0) {
-        $actionLicensePlate = "NotFound"
-    }
-
-    # Process
-    switch ($actionLicensePlate) {
-        "Delete" {
-            #region Unassign licenseplate
-            try {
-                $queryUnassignLicensePlate = "
+        # Process
+        switch ($actionLicensePlate) {
+            "Delete" {
+                #region Unassign licenseplate
+                try {
+                    $queryUnassignLicensePlate = "
                 UPDATE
                     ACCESSKEY
                 SET
@@ -748,77 +751,78 @@ try {
                     $($licensePlateCorrelationField) = $($licensePlateCorrelationValue)
                 "
 
-                $unassignLicensePlateSplatParams = @{
-                    BaseUrl    = $actionContext.Configuration.BaseUrl
-                    JSessionID = $jSessionID
-                    Query      = $queryUnassignLicensePlate
-                    QueryType  = "update"
+                    $unassignLicensePlateSplatParams = @{
+                        BaseUrl    = $actionContext.Configuration.BaseUrl
+                        JSessionID = $jSessionID
+                        Query      = $queryUnassignLicensePlate
+                        QueryType  = "update"
+                    }
+
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        Write-Verbose "Unassigning licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($unassignLicensePlateSplatParams | ConvertTo-Json)"   
+
+                        $unassignedLicensePlate = Invoke-IProtectQuery @unassignLicensePlateSplatParams
+
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = "Unassigned licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json)"
+                                IsError = $false
+                            })
+
+                    }
+                    else {
+                        Write-Warning "DryRun: Would unassign licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($unassignLicensePlateSplatParams | ConvertTo-Json)"
+                    }
                 }
+                catch {
+                    $ex = $PSItem
 
-                if (-Not($actionContext.DryRun -eq $true)) {
-                    Write-Verbose "Unassigning licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($unassignLicensePlateSplatParams | ConvertTo-Json)"   
-
-                    $unassignedLicensePlate = Invoke-IProtectQuery @unassignLicensePlateSplatParams
+                    $auditMessage = "Error unassigning licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Error: $($ex.Exception.Message)"
+                    Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             # Action  = "" # Optional
-                            Message = "Unassigned licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json)"
-                            IsError = $false
+                            Message = $auditMessage
+                            IsError = $true
                         })
 
-                }
-                else {
-                    Write-Warning "DryRun: Would unassign licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). SplatParams: $($unassignLicensePlateSplatParams | ConvertTo-Json)"
-                }
-            }
-            catch {
-                $ex = $PSItem
+                    # Log query
+                    Write-Warning "Query: $queryUnassignLicensePlate"
 
-                $auditMessage = "Error unassigning licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                    # Throw terminal error
+                    throw $auditMessage
+                }
+                #endregion Unassign licenseplate
+
+                break
+            }
+
+            "MultipleFound" {
+                $auditMessage = "Multiple licenseplates found where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Please correct this so the licenseplates are unique."
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
                         Message = $auditMessage
                         IsError = $true
                     })
-
-                # Log query
-                Write-Warning "Query: $queryUnassignLicensePlate"
-
+        
                 # Throw terminal error
                 throw $auditMessage
+
+                break
             }
-            #endregion Unassign licenseplate
 
-            break
-        }
-
-        "MultipleFound" {
-            $auditMessage = "Multiple licenseplates found where [$licensePlateCorrelationField] = [$($licensePlateCorrelationValue)]. Please correct this so the licenseplates are unique."
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $true
-                })
-        
-            # Throw terminal error
-            throw $auditMessage
-
-            break
-        }
-
-        "NotFound" {
-            $auditMessage = "Skipped deleting licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Reason: No licenseplate found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
+            "NotFound" {
+                $auditMessage = "Skipped deleting licenseplate with AccountReference: $($actionContext.References.Account.LicensePlate | ConvertTo-Json). Reason: No licenseplate found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
     
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = $auditMessage
-                    IsError = $false
-                })
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        # Action  = "" # Optional
+                        Message = $auditMessage
+                        IsError = $false
+                    })
     
-            break
+                break
+            }
         }
     }
     #endregion LicensePlate
@@ -1122,11 +1126,6 @@ finally {
     }
     else {
         $outputContext.Success = $true
-    }
-
-    # Check if accountreference is set, if not set, set this with default value as this must contain a value
-    if ([String]::IsNullOrEmpty($outputContext.AccountReference)) {
-        $outputContext.AccountReference = "Currently not available"
     }
 
     if ($null -ne $script:WebSession) {
