@@ -960,7 +960,7 @@ try {
             throw $auditMessage
         }
         #endregion Get current KeyCard
-        Write-Warning "correlatedKeyCard: $($correlatedKeyCard | ConvertTo-Json)"
+
         if (($correlatedKeyCard | Measure-Object).count -eq 1) {
             try {
                 Write-Verbose "Comparing current keyCard to mapped properties"
@@ -1076,60 +1076,36 @@ try {
                 #endregion 20230703-021 - GK - Retrieve current permissions of old keycard
 
                 #region 20230703-021 - GK - Create new keycard
-                #region Create keycard
+                #region Verify if keycard must be either [created ] or just [correlated]
                 try {
-                    $objectCreateKeyCard = @{}
+                    $queryCorrelateKeyCard = "
+                    SELECT
+                        $($keyCardPropertiesToQuery -Join ',')
+                    FROM
+                        ACCESSKEY
+                    WHERE
+                        CARDCLASSID = $($keyCardAccount.CARDCLASSID)
+                        AND RCN = '$($keyCardAccount.RCN)'
+                    "
 
-                    # Add the mapped fields to object to create keycard
-                    foreach ($keyCardAccountProperty in $keyCardAccount.PsObject.Properties | Where-Object { $null -ne $_.Value }) {
-                        # Enclose specific fields with single quotes
-                        if ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInSingleQuotes) {
-                            [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "'$($keyCardAccountProperty.Value)'")
-                        }
-                        # Enclose specific fields with hashtags
-                        elseif ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInHashtags) {
-                            [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "#$($keyCardAccountProperty.Value)#")
-                        }
-                        else {
-                            [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", $($keyCardAccountProperty.Value))
-                        }
-                    }
-
-                    # Seperate Property Names with comma ,
-                    $queryCreateKeyCardProperties = $(($objectCreateKeyCard.Keys -join ","))
-                    # Seperate Property Values with comma ,
-                    $queryCreateKeyCardValues = $(($objectCreateKeyCard.Values -join ","))
-
-                    $queryCreateKeyCard = "
-                INSERT INTO ACCESSKEY
-                    ($($queryCreateKeyCardProperties))
-                VALUES
-                    ($($queryCreateKeyCardValues))
-                "
-
-                    $createKeyCardSplatParams = @{
+                    $correlateKeyCardSplatParams = @{
                         BaseUrl    = $actionContext.Configuration.BaseUrl
                         JSessionID = $jSessionID
-                        Query      = $queryCreateKeyCard
-                        QueryType  = "update"
+                        Query      = $queryCorrelateKeyCard
+                        QueryType  = "query"
                     }
 
-                    if (-Not($actionContext.DryRun -eq $true)) {
-                        Write-Verbose "Creating keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. SplatParams: $($createKeyCardSplatParams | ConvertTo-Json)"   
+                    Write-Verbose "Querying keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. SplatParams: $($correlateKeyCardSplatParams | ConvertTo-Json)"
 
-                        $createdKeyCard = Invoke-IProtectQuery @createKeyCardSplatParams
-
-                        # Auditlog is created after query of created keycard to include accountreference
-                        Write-Verbose "Created keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]"
-                    }
-                    else {
-                        Write-Warning "DryRun: Would create keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. SplatParams: $($createKeyCardSplatParams | ConvertTo-Json)"
-                    }
+                    $correlatedKeyCard = $null
+                    $correlatedKeyCard = Invoke-IProtectQuery @correlateKeyCardSplatParams
+    
+                    Write-Verbose "Queried keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Result: $($correlatedKeyCard | Out-String)"
                 }
                 catch {
                     $ex = $PSItem
 
-                    $auditMessage = "Error creating keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
+                    $auditMessage = "Error querying keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
                     Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -1139,48 +1115,68 @@ try {
                         })
 
                     # Log query
-                    Write-Warning "Query: $queryCreateKeyCard"
+                    Write-Warning "Query: $queryCorrelateKeyCard"
 
                     # Throw terminal error
                     throw $auditMessage
                 }
-                #endregion Create keycard
+                #endregion Verify if keycard must be either [created ] or just [correlated]
 
-                if (-Not($actionContext.DryRun -eq $true)) {
-                    #region Get created keycard by CARDCLASSID and RCN
+                if (($correlatedKeyCard | Measure-Object).count -eq 0) {
+                    #region Create keycard
                     try {
-                        $queryGetKeyCard = "
-                    SELECT
-                        $($keyCardPropertiesToQuery -Join ',')
-                    FROM
-                        ACCESSKEY
-                    WHERE
-                        CARDCLASSID = $($keyCardAccount.CARDCLASSID)
-                        AND RCN = $($keyCardAccount.RCN)'
-                    "
+                        $objectCreateKeyCard = @{}
 
-                        $getKeyCardSplatParams = @{
+                        # Add the mapped fields to object to create keycard
+                        foreach ($keyCardAccountProperty in $keyCardAccount.PsObject.Properties | Where-Object { $null -ne $_.Value }) {
+                            # Enclose specific fields with single quotes
+                            if ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInSingleQuotes) {
+                                [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "'$($keyCardAccountProperty.Value)'")
+                            }
+                            # Enclose specific fields with hashtags
+                            elseif ($keyCardAccountProperty.Name -in $keyCardPropertiesToEncloseInHashtags) {
+                                [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", "#$($keyCardAccountProperty.Value)#")
+                            }
+                            else {
+                                [void]$objectCreateKeyCard.Add("$($keyCardAccountProperty.Name)", $($keyCardAccountProperty.Value))
+                            }
+                        }
+
+                        # Seperate Property Names with comma ,
+                        $queryCreateKeyCardProperties = $(($objectCreateKeyCard.Keys -join ","))
+                        # Seperate Property Values with comma ,
+                        $queryCreateKeyCardValues = $(($objectCreateKeyCard.Values -join ","))
+
+                        $queryCreateKeyCard = "
+                        INSERT INTO ACCESSKEY
+                            ($($queryCreateKeyCardProperties))
+                        VALUES
+                            ($($queryCreateKeyCardValues))
+                        "
+
+                        $createKeyCardSplatParams = @{
                             BaseUrl    = $actionContext.Configuration.BaseUrl
                             JSessionID = $jSessionID
-                            Query      = $queryGetKeyCard
-                            QueryType  = "query"
+                            Query      = $queryCreateKeyCard
+                            QueryType  = "update"
                         }
 
-                        Write-Verbose "Querying created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. SplatParams: $($getKeyCardSplatParams | ConvertTo-Json)"
+                        if (-Not($actionContext.DryRun -eq $true)) {
+                            Write-Verbose "Creating keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. SplatParams: $($createKeyCardSplatParams | ConvertTo-Json)"   
 
-                        $correlatedKeyCard = $null
-                        $correlatedKeyCard = Invoke-IProtectQuery @getKeyCardSplatParams
+                            $createdKeyCard = Invoke-IProtectQuery @createKeyCardSplatParams
 
-                        if ($null -eq $correlatedKeyCard) {
-                            throw "No result returned"
+                            # Auditlog is created after query of created keycard to include accountreference
+                            Write-Verbose "Created keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]"
                         }
-    
-                        Write-Verbose "Queried created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Result: $($correlatedKeyCard | Out-String)"
+                        else {
+                            Write-Warning "DryRun: Would create keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. SplatParams: $($createKeyCardSplatParams | ConvertTo-Json)"
+                        }
                     }
                     catch {
                         $ex = $PSItem
 
-                        $auditMessage = "Error querying created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
+                        $auditMessage = "Error creating keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
                         Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
 
                         $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -1190,13 +1186,82 @@ try {
                             })
 
                         # Log query
-                        Write-Warning "Query: $queryGetKeyCard"
+                        Write-Warning "Query: $queryCreateKeyCard"
 
                         # Throw terminal error
                         throw $auditMessage
                     }
-                    #endregion Get created keycard by CARDCLASSID and RCN
+                    #endregion Create keycard
 
+                    if (-Not($actionContext.DryRun -eq $true)) {
+                        #region Get created keycard by CARDCLASSID and RCN
+                        try {
+                            $queryGetKeyCard = "
+                        SELECT
+                            $($keyCardPropertiesToQuery -Join ',')
+                        FROM
+                            ACCESSKEY
+                        WHERE
+                            CARDCLASSID = $($keyCardAccount.CARDCLASSID)
+                            AND RCN = '$($keyCardAccount.RCN)'
+                        "
+    
+                            $getKeyCardSplatParams = @{
+                                BaseUrl    = $actionContext.Configuration.BaseUrl
+                                JSessionID = $jSessionID
+                                Query      = $queryGetKeyCard
+                                QueryType  = "query"
+                            }
+    
+                            Write-Verbose "Querying created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. SplatParams: $($getKeyCardSplatParams | ConvertTo-Json)"
+    
+                            $correlatedKeyCard = $null
+                            $correlatedKeyCard = Invoke-IProtectQuery @getKeyCardSplatParams
+    
+                            if ($null -eq $correlatedKeyCard) {
+                                throw "No result returned"
+                            }
+        
+                            Write-Verbose "Queried created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Result: $($correlatedKeyCard | Out-String)"
+                        }
+                        catch {
+                            $ex = $PSItem
+    
+                            $auditMessage = "Error querying created keycard where [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]. Error: $($ex.Exception.Message)"
+                            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    
+                            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                    # Action  = "" # Optional
+                                    Message = $auditMessage
+                                    IsError = $true
+                                })
+    
+                            # Log query
+                            Write-Warning "Query: $queryGetKeyCard"
+    
+                            # Throw terminal error
+                            throw $auditMessage
+                        }
+                        #endregion Get created keycard by CARDCLASSID and RCN
+    
+                        #region Set AccountReference and AccountData and create auditlog
+                        [void]$outputContext.AccountReference.add("KeyCard", @{
+                                "ACCESSKEYID" = "$($correlatedKeyCard.ACCESSKEYID)"
+                            })
+    
+                        foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToExport }) {
+                            $outputContext.Data.KeyCard | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
+                        }
+    
+                        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                # Action  = "" # Optional
+                                Message = "Created keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)] with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json)"
+                                IsError = $false
+                            })
+                        #endregion Set AccountReference and AccountData and create auditlog
+                    }
+                }
+                elseif (($correlatedKeyCard | Measure-Object).count -eq 1) {
                     #region Set AccountReference and AccountData and create auditlog
                     [void]$outputContext.AccountReference.add("KeyCard", @{
                             "ACCESSKEYID" = "$($correlatedKeyCard.ACCESSKEYID)"
@@ -1207,12 +1272,12 @@ try {
                     }
 
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Created keycard with [CARDCLASSID = $($keyCardAccount.CARDCLASSID)] AND [RCN = $($keyCardAccount.RCN)] with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json)"
+                            Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
+                            Message = "Correlated to keycard with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json) on [CARDCLASSID] = [$($keyCardAccount.CARDCLASSID)] AND [RCN] = [$($keyCardAccount.RCN)]"
                             IsError = $false
                         })
                     #endregion Set AccountReference and AccountData and create auditlog
-                }
+                }                
                 #endregion 20230703-021 - GK - Create new keycard
 
                 #region 20230703-021 - GK - Assign permissions of old keycard to new keycard
@@ -1262,21 +1327,30 @@ try {
                         }
                         catch {
                             $ex = $PSItem
-
-                            $auditMessage = "Error creating permission where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)] for keycard with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json). Error: $($ex.Exception.Message)"
-                            Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-            
-                            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                    # Action  = "" # Optional
-                                    Message = $auditMessage
-                                    IsError = $true
-                                })
-            
-                            # Log query
-                            Write-Warning "Query: $querycreatePermissionKeyCard"
-            
-                            # Throw terminal error
-                            throw $auditMessage
+                            
+                            if ($ex.Exception.Message -like "*Value already exists*") {
+                                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                        # Action  = "" # Optional
+                                        Message = "Skipped creating permission where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)] for keycard with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json). Reason: Value already exists."
+                                        IsError = $false
+                                    })
+                            }
+                            else {
+                                $auditMessage = "Error creating permission where [KEYKEYGROUPID = $($currentPermissionKeyCard.KEYKEYGROUPID)] for keycard with AccountReference: $($outputContext.AccountReference.KeyCard | ConvertTo-Json). Error: $($ex.Exception.Message)"
+                                Write-Warning "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                
+                                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                                        # Action  = "" # Optional
+                                        Message = $auditMessage
+                                        IsError = $true
+                                    })
+                
+                                # Log query
+                                Write-Warning "Query: $querycreatePermissionKeyCard"
+                
+                                # Throw terminal error
+                                throw $auditMessage
+                            }
                         }
                         #endregion Create permission for keycard
                     }
