@@ -1563,8 +1563,8 @@ finally {
     }
 
     # Check if accountreference is set, if not set, set this with default value as this must contain a value
-    if ([String]::IsNullOrEmpty($outputContext.AccountReference)) {
-        $outputContext.AccountReference = "Currently not available"
+    if ([String]::IsNullOrEmpty($outputContext.AccountReference) -and $actionContext.DryRun -eq $true) {
+        $outputContext.AccountReference = "DryRun: Currently not available"
     }
 
     if ($null -ne $script:WebSession) {
