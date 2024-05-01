@@ -1600,16 +1600,6 @@ try {
                 }
                 #endregion 20230703-021 - GK - Delete old keycard
 
-                #region Set AccountReference and AccountData
-                [void]$outputContext.AccountReference.add("KeyCard", @{
-                        "ACCESSKEYID" = "$($correlatedKeyCard.ACCESSKEYID)"
-                    })
-        
-                foreach ($correlatedKeyCardProperty in $correlatedKeyCard.PSObject.Properties | Where-Object { $_.Name -in $keyCardPropertiesToExport }) {
-                    $outputContext.Data.KeyCard | Add-Member -MemberType NoteProperty -Name $correlatedKeyCardProperty.Name -Value $correlatedKeyCardProperty.Value -Force
-                }
-                #endregion Set AccountReference and AccountData
-
                 break
             }
 
