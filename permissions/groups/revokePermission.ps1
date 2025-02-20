@@ -1,7 +1,7 @@
-##################################################
-# HelloID-Conn-Prov-Target-IProtect-Disable
+#################################################################
+# HelloID-Conn-Prov-Target-IProtect-RevokePermission-Group
 # PowerShell V2
-##################################################
+#################################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -226,6 +226,8 @@ function Invoke-Logout {
     }
 }
 #endregion
+
+# Begin
 try {
     # Verify if [aRef] has a value
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
@@ -270,40 +272,55 @@ try {
             accesskey
         WHERE
             personid = $($actionContext.References.Account)"
-
         $accessKeyList = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetAccessKeys -QueryType 'query'
+
     }
 
     if ($null -ne $correlatedAccount -and $accessKeyList.count -gt 0) {
-        $action = 'DisableAccount'
+        $action = 'RevokePermission'
     } elseif ($null -ne $correlatedAccount) {
         $action = 'NoAccessKeysFound'
     } else {
         $action = 'NotFound'
     }
-
     # Process
     switch ($action) {
-        'DisableAccount' {
+        'RevokePermission' {
             foreach ($accessKey in $accessKeyList) {
-                $queryUpdateAccessKey = "
-                UPDATE
-                    accesskey
-                SET VALID = 0
-                WHERE ACCESSKEYID = $($accessKey.AccessKeyId)
-                "
+                $getKeyKeyGroupIdQuery = "
+                SELECT
+                    KEYKEYGROUPID,
+                    KEYGROUPID,
+                    ACCESSKEYID
+                FROM keykeygroup
+                WHERE keykeygroup.accesskeyid = $($accessKey.AccessKeyId)"
 
                 if (-not($actionContext.DryRun -eq $true)) {
-                    Write-Information "Disabling IProtect AccessKey with AccessKeyId: [$($accessKey.AccessKeyId)]"
-                    if (-not ($accessKey.valid -eq 0)) {
-                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryUpdateAccessKey -QueryType 'update'
-                    }
+                    Write-Information "Revoking IProtect permission: [$($actionContext.References.Permission.DisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                    $keyKeyGroupPerAccessKey = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $getKeyKeyGroupIdQuery -QueryType 'query'
                 } else {
-                    Write-Information "[DryRun] Disable IProtect accessKey with AccessKeyId: [$($accessKey.AccessKeyId)], will be executed during enforcement"
+                    $keyKeyGroupPerAccessKey = @(
+                        @{
+                            KEYKEYGROUPID = 111
+                            KEYGROUPID    = $($actionContext.References.Permission.Reference)
+                            ACCESSKEYID   = $($accessKey.AccessKeyId)
+                        }
+                    )
                 }
+                $keyKeyGroup = $keyKeyGroupPerAccessKey | Where-Object { $_.KeyGroupId -eq $actionContext.References.Permission.Reference }
+                if (-not ($null -eq $keyKeyGroup )) {
+                    $deleteQuery = "
+                            DELETE FROM keykeygroup
+                            WHERE keykeygroupid = $($keyKeyGroup.KeyKeyGroupId)"
+                    if (-not($actionContext.DryRun -eq $true)) {
+                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $deleteQuery -QueryType 'Update'
 
+                    } else {
+                        Write-Information "[DryRun] Revoke IProtect permission: [$($actionContext.References.Permission.DisplayName)] from AccessKey [$($accessKey.AccessKeyId)], will be executed during enforcement"
+                    }
+                }
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "AccessKey with AccessKeyId [$($accessKey.AccessKeyId)] was successfully disabled"
+                        Message = "Revoke permission [$($actionContext.References.Permission.DisplayName)] from AccessKey [$($accessKey.AccessKeyId)] was successful"
                         IsError = $false
                     })
             }
@@ -311,19 +328,17 @@ try {
             if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
                 $outputContext.Success = $true
             }
-            break
         }
 
         'NoAccessKeysFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
+            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot revoke permission [$($actionContext.References.Permission.DisplayName)]"
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
+                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot revoke permission [$($actionContext.References.Permission.DisplayName)]"
                     IsError = $false
                 })
             break
         }
-
 
         'NotFound' {
             Write-Information "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
@@ -341,18 +356,14 @@ try {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
-        $auditMessage = "Could not disable IProtect account. Error: $($errorObj.FriendlyMessage)"
+        $auditMessage = "Could not revoke IProtect permission. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $auditMessage = "Could not disable IProtect account. Error: $($_.Exception.Message)"
+        $auditMessage = "Could not revoke IProtect permission. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditMessage
             IsError = $true
         })
-} finally {
-    if ($null -ne $WebSession) {
-        $null = Invoke-logout
-    }
 }
