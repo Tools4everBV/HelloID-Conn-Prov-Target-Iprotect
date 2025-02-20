@@ -1,5 +1,5 @@
 ##################################################
-# HelloID-Conn-Prov-Target-IProtect-Disable
+# HelloID-Conn-Prov-Target-IProtect-UniquenessCheck
 # PowerShell V2
 ##################################################
 
@@ -227,130 +227,60 @@ function Invoke-Logout {
 }
 #endregion
 try {
-    # Verify if [aRef] has a value
-    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-        throw 'The account reference could not be found'
-    }
-
     $webSession, $jSessionID = Get-JSessionID
     $null = Confirm-AuthenticationResult -JSessionID $jSessionID -WebSession $webSession
 
-    Write-Information 'Verifying if a IProtect account exists'
+    if ( [string]::IsNullOrEmpty($actionContext.Data.Employee.SalaryNR) -or
+        [string]::IsNullOrEmpty($actionContext.Data.Person.FirstName) -or
+        [string]::IsNullOrEmpty($actionContext.Data.Person.Name) ) {
+        throw 'Not all the mandatory values to validate the account are present'
+    }
+
+    Write-Information 'Validate if the combination [FirstName and Name] is unique in IProtect'
     $queryGetPerson = "
     SELECT
+        $($actionContext.Data.Person.PSObject.Properties.Name -Join ',')
+    FROM
+        PERSON
+    WHERE
+        NAME = '$($actionContext.Data.Person.Name)'
+        AND FIRSTNAME = '$($actionContext.Data.Person.FirstName)'
+    "
+
+    $existingPersonAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetPerson -QueryType 'query'
+    if ($null -ne $existingPersonAccount) {
+        $queryGetEmployee = "
+        SELECT
         TABLEEMPLOYEE.PERSONID AS person_personId,
-        TABLEPERSON.NAME AS person_Name,
-        TABLEPERSON.FirstName AS person_FirstName,
-        TABLEPERSON.Prefix AS person_Prefix,
-        TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
-        TABLEEMPLOYEE.Language AS employee_Language,
         TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
         TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
-        TABLEEMPLOYEE.HireDate AS employee_HireDate,
-        TABLEEMPLOYEE.TerminationDate AS employee_TerminationDate
-    FROM Person AS TABLEPERSON
-    LEFT OUTER JOIN employee AS TABLEEMPLOYEE
-        ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
-    WHERE
-        TABLEPERSON.personID = '$($actionContext.References.Account)'"
 
-    $correlatedAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetPerson -QueryType 'query'
-
-    if ($null -ne $correlatedAccount) {
-        Write-Information "Getting linked  accessKey Cards of employee [$($actionContext.References.Account)]"F
-        $queryGetAccessKeys = "
-        SELECT
-            accesskeyid,
-            personid,
-            valid,
-            startdate,
-            enddate,
-            unlimited
-        FROM
-            accesskey
+        FROM employee TABLEEMPLOYEE
+            LEFT OUTER JOIN person TABLEPERSON ON TABLEPERSON.personID = TABLEEMPLOYEE.personID
         WHERE
-            personid = $($actionContext.References.Account)"
+            TABLEEMPLOYEE.PERSONID = '$($existingPersonAccount.PersonId)'"
+        $correlateEmployeeAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetEmployee -QueryType 'query'
 
-        $accessKeyList = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetAccessKeys -QueryType 'query'
     }
 
-    if ($null -ne $correlatedAccount -and $accessKeyList.count -gt 0) {
-        $action = 'DisableAccount'
-    } elseif ($null -ne $correlatedAccount) {
-        $action = 'NoAccessKeysFound'
-    } else {
-        $action = 'NotFound'
-    }
-
-    # Process
-    switch ($action) {
-        'DisableAccount' {
-            foreach ($accessKey in $accessKeyList) {
-                $queryUpdateAccessKey = "
-                UPDATE
-                    accesskey
-                SET VALID = 0
-                WHERE ACCESSKEYID = $($accessKey.AccessKeyId)
-                "
-
-                if (-not($actionContext.DryRun -eq $true)) {
-                    Write-Information "Disabling IProtect AccessKey with AccessKeyId: [$($accessKey.AccessKeyId)]"
-                    if (-not ($accessKey.valid -eq 0)) {
-                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryUpdateAccessKey -QueryType 'update'
-                    }
-                } else {
-                    Write-Information "[DryRun] Disable IProtect accessKey with AccessKeyId: [$($accessKey.AccessKeyId)], will be executed during enforcement"
-                }
-
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "AccessKey with AccessKeyId [$($accessKey.AccessKeyId)] was successfully disabled"
-                        IsError = $false
-                    })
-            }
-
-            if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
-                $outputContext.Success = $true
-            }
-            break
-        }
-
-        'NoAccessKeysFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
-                    IsError = $false
-                })
-            break
-        }
-
-
-        'NotFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-                    IsError = $false
-                })
-            break
+    # Check if person account is linked to the employee
+    if ($null -ne $correlateEmployeeAccount) {
+        if (-not ($correlateEmployeeAccount.employee_salaryNr -eq $actionContext.Data.employee.SalaryNR) ) {
+            [void]$outputContext.NonUniqueFields.Add('Person.Name')
+            Write-Information "The combination of FirstName and Name [$($actionContext.Data.Person.FirstName), $($actionContext.Data.Person.Name)] are not unique"
         }
     }
+    $outputContext.Success = $true
 } catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
-        $auditMessage = "Could not disable IProtect account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $auditMessage = "Could not disable IProtect account. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
-            IsError = $true
-        })
 } finally {
     if ($null -ne $WebSession) {
         $null = Invoke-logout

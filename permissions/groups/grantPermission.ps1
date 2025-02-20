@@ -1,7 +1,7 @@
-##################################################
-# HelloID-Conn-Prov-Target-IProtect-Disable
+################################################################
+# HelloID-Conn-Prov-Target-IProtect-GrantPermission-Group
 # PowerShell V2
-##################################################
+################################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -226,6 +226,8 @@ function Invoke-Logout {
     }
 }
 #endregion
+
+# Begin
 try {
     # Verify if [aRef] has a value
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
@@ -258,8 +260,7 @@ try {
 
     if ($null -ne $correlatedAccount) {
         Write-Information "Getting linked  accessKey Cards of employee [$($actionContext.References.Account)]"F
-        $queryGetAccessKeys = "
-        SELECT
+        $queryGetAccessKeys = "SELECT
             accesskeyid,
             personid,
             valid,
@@ -270,42 +271,61 @@ try {
             accesskey
         WHERE
             personid = $($actionContext.References.Account)"
-
         $accessKeyList = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetAccessKeys -QueryType 'query'
     }
 
+
     if ($null -ne $correlatedAccount -and $accessKeyList.count -gt 0) {
-        $action = 'DisableAccount'
+        $action = 'GrantPermission'
     } elseif ($null -ne $correlatedAccount) {
         $action = 'NoAccessKeysFound'
     } else {
         $action = 'NotFound'
     }
 
+
+
     # Process
     switch ($action) {
-        'DisableAccount' {
+        'GrantPermission' {
             foreach ($accessKey in $accessKeyList) {
-                $queryUpdateAccessKey = "
-                UPDATE
-                    accesskey
-                SET VALID = 0
-                WHERE ACCESSKEYID = $($accessKey.AccessKeyId)
+                $insertQuery = "
+                INSERT INTO keykeygroup
+                    (accesskeyid, keygroupid)
+                VALUES
+                    ($($accessKey.AccessKeyId), $($actionContext.References.Permission.Reference))
                 "
 
                 if (-not($actionContext.DryRun -eq $true)) {
-                    Write-Information "Disabling IProtect AccessKey with AccessKeyId: [$($accessKey.AccessKeyId)]"
-                    if (-not ($accessKey.valid -eq 0)) {
-                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryUpdateAccessKey -QueryType 'update'
+                    Write-Information "Granting IProtect permission: [$($actionContext.References.Permission.DisplayName)] to AccessKey [$($accessKey.AccessKeyId)]"
+                    try {
+                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $insertQuery -QueryType 'update'
+                    } catch {
+                        if (-not $_.Exception.Message.contains('already exists')) {
+                            throw $_
+                        }
                     }
                 } else {
-                    Write-Information "[DryRun] Disable IProtect accessKey with AccessKeyId: [$($accessKey.AccessKeyId)], will be executed during enforcement"
+                    Write-Information "[DryRun] Grant IProtect permission: [$($actionContext.References.Permission.DisplayName)] to AccessKey [$($accessKey.AccessKeyId)], will be executed during enforcement"
                 }
-
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "AccessKey with AccessKeyId [$($accessKey.AccessKeyId)] was successfully disabled"
+                        Message = "Grant permission [$($actionContext.References.Permission.DisplayName)] to AccessKey [$($accessKey.AccessKeyId)] was successful"
                         IsError = $false
                     })
+
+                if ($null -eq $outputContext.SubPermissions) {
+                    throw 'SubPermissions are not enabled'
+                }
+                $outputContext.SubPermissions.Add(
+                    [PSCustomObject]@{
+                        DisplayName = "AccessKey: $($accessKey.AccessKeyId)"
+                        Reference   = [PSCustomObject]@{
+                            PermissionId = $($actionContext.References.Permission.reference)
+                            AccessKeyID  = $accessKey.AccessKeyId
+                        }
+                    }
+                )
+
             }
 
             if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
@@ -315,11 +335,11 @@ try {
         }
 
         'NoAccessKeysFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
-            $outputContext.Success = $true
+            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot grant permission [$($actionContext.References.Permission.DisplayName)]"
+            $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
-                    IsError = $false
+                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot grant permission [$($actionContext.References.Permission.DisplayName)]"
+                    IsError = $true
                 })
             break
         }
@@ -327,10 +347,10 @@ try {
 
         'NotFound' {
             Write-Information "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-            $outputContext.Success = $true
+            $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Message = "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-                    IsError = $false
+                    IsError = $true
                 })
             break
         }
@@ -341,10 +361,10 @@ try {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
-        $auditMessage = "Could not disable IProtect account. Error: $($errorObj.FriendlyMessage)"
+        $auditMessage = "Could not grant IProtect permission. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $auditMessage = "Could not disable IProtect account. Error: $($_.Exception.Message)"
+        $auditMessage = "Could not grant IProtect permission. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
