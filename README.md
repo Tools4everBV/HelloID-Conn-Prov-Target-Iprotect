@@ -37,7 +37,6 @@
     - [Permission Grants and Revokes on AccessKeys](#permission-grants-and-revokes-on-accesskeys)
     - [SQL Queries](#sql-queries)
     - [Reboarding](#reboarding)
-    - [SubPermissions](#subpermissions)
   - [Development resources](#development-resources)
     - [API endpoints](#api-endpoints)
     - [API documentation](#api-documentation)
@@ -151,9 +150,6 @@ The uniqueness check ensures that the Person object is unique within the IProtec
 
 ### Reboarding
 Reboarding an employee after they are deleted from HelloID is supported, with one side note. AccessKeys are automatically unlinked from the account during the delete action and will not be present when the employee is recreated.
-
-### SubPermissions
-
 
 ## Development Resources
 

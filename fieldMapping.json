@@ -29,7 +29,7 @@
             "Update"
           ],
           "MappingMode": "Fixed",
-          "Value": "\"HARDCODED IN CODE\"",
+          "Value": "\"Person.PrimaryContract.StartDate\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -97,7 +97,7 @@
             "Update"
           ],
           "MappingMode": "Fixed",
-          "Value": "\"HARDCODED IN CODE\"",
+          "Value": "\"Person.PrimaryContract.EndDate\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
