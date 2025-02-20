@@ -99,11 +99,11 @@ The following lifecycle actions are available:
 | Action                                  | Description                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
 | create.ps1                              | Creates a new person and employee account.                                                   |
-| delete.ps1                              | Removes an existing person and employee account, and removing the link of linked AccessKeys. |
+| delete.ps1                              | Removes an existing person and employee account, and removes the link of linked AccessKeys. |
 | disable.ps1                             | Disables an account, by disabling the linked AccessKeys. Sets the "VALID" property to false. |
 | enable.ps1                              | Enables an account, by enabling the linked AccessKeys. Sets the "VALID" property to true.    |
-| update.ps1                              | Updates the attributes of an person and employee account.                                    |
-| UniquenessCheck.ps1                     | Validate if persons combination `FirstName` and (last)`Name` is unique                       |
+| update.ps1                              | Updates the attributes of a person and employee account.                                    |
+| UniquenessCheck.ps1                     | Validate if the person combination `FirstName` and (last)`Name` is unique                       |
 | permissions/groups/grantPermission.ps1  | Grants specific KeyGroup permissions to each Accesskey linked to the account.                |
 | permissions/groups/revokePermission.ps1 | Revokes specific KeyGroup permissions from each Accesskey linked to the account.             |
 | permissions/groups/permissions.ps1      | Retrieves all available keyGroups permissions.                                               |
@@ -127,7 +127,7 @@ Although this connector manages Employees, we cannot ignore the Person object. T
 During correlation, the connector correlates based on the Employee.SalaryNR using a combined query to retrieve both the Person and Employee objects at once. Once this query returns a positive result, the account will be correlated. If no Employee is found, a separate query is performed to retrieve only the Person object based on `FirstName` and (Last) `Name` to avoid errors and duplicate accounts, and correlates the person account when one is found.
 
 ### Uniqueness Check for Person Object (FirstName and (Last) Name)
-The uniqueness check ensures that the Person object is unique within the IProtect environment. The script validates the `personTable` for `FirstName` and (Last)`Name`. If an account is found, it checks whether an Employee account is linked. Only if an Employee account is also found, the uniqueness check determines that the Person object is **NOT** unique. If there is only a Person account without a linked Employee account, that Person account will be correlated.
+The uniqueness check ensures that the Person object is unique within the IProtect environment. The script validates the `personTable` for `FirstName` and (Last)`Name`. If an account is found, it checks whether an Employee account is linked. Only if an employee account is also found does the uniqueness check determine that the person object is **NOT** unique. If there is only a Person account without a linked Employee account, that Person account will be correlated.
 
 ### Enable and Disable Linked AccessKey
 - The Enable and Disable scripts grant and revoke the AccessKey linked to a user account in IProtect, but not the account itself. An Account object does not have an active property.
@@ -135,14 +135,15 @@ The uniqueness check ensures that the Person object is unique within the IProtec
 
 ### Delete Account with Removed Linked AccessKeys
 - Before deleting the Person and Employee, the Delete action first unlinks all linked AccessKeys.
+- By unlinking the AccessKey from the account. The connector does not remove unmanaged permissions from the AccessKey, which means, in theory, that the unlinked AccessKey may still contain permissions. Keep this in mind when linking a previously used AccessKey to a new account.
 - If there are still unmanaged AccessKeys on the account, the deletion of the Person associated with the account may fail.
 
 ### Permission Grants and Revokes on AccessKeys
 - KeyGroup permissions are granted or revoked on each linked AccessKey of the IProtect account.
 - If no linked AccessKey is present during the permission granting process, the grant script will result in an error and retry until an AccessKey is linked.
 - The connector does not update newly assigned AccessKeys after the permission has been granted.
-- The best practice should be when a person receive a new AccessKey the granted permissions are copied for a existing Key.
-- To apply permissions to newly linked AccessKeys with HelloID, you can place the grant script as update script and manually run "Force update permissions in definition."
+- The best practice should be when a person receives a new AccessKey the granted permissions are copied for an existing Key.
+- To apply permissions to newly linked AccessKeys with HelloID, you can place the grant script asan update script and manually run "Force update permissions in the definition."
 
 ### SQL Queries
 - The connector largely consists of SQL queries that are sent to the IProtect endpoints. There are some restrictions compared to standard SQL, which can be found in the documentation.
@@ -154,7 +155,7 @@ Reboarding an employee after they are deleted from HelloID is supported, with on
 ### SubPermissions
 
 
-## Development resources
+## Development Resources
 
 ### API endpoints
 
