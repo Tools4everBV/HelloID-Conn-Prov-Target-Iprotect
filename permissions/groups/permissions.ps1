@@ -1,7 +1,7 @@
-##################################################
-# HelloID-Conn-Prov-Target-IProtect-Disable
+############################################################
+# HelloID-Conn-Prov-Target-IProtect-Permissions-Group
 # PowerShell V2
-##################################################
+############################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -226,131 +226,46 @@ function Invoke-Logout {
     }
 }
 #endregion
-try {
-    # Verify if [aRef] has a value
-    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-        throw 'The account reference could not be found'
-    }
 
+try {
+    Write-Information 'Retrieving permissions'
     $webSession, $jSessionID = Get-JSessionID
     $null = Confirm-AuthenticationResult -JSessionID $jSessionID -WebSession $webSession
 
-    Write-Information 'Verifying if a IProtect account exists'
-    $queryGetPerson = "
+    $querySelectKeyGroup = '
     SELECT
-        TABLEEMPLOYEE.PERSONID AS person_personId,
-        TABLEPERSON.NAME AS person_Name,
-        TABLEPERSON.FirstName AS person_FirstName,
-        TABLEPERSON.Prefix AS person_Prefix,
-        TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
-        TABLEEMPLOYEE.Language AS employee_Language,
-        TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
-        TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
-        TABLEEMPLOYEE.HireDate AS employee_HireDate,
-        TABLEEMPLOYEE.TerminationDate AS employee_TerminationDate
-    FROM Person AS TABLEPERSON
-    LEFT OUTER JOIN employee AS TABLEEMPLOYEE
-        ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
-    WHERE
-        TABLEPERSON.personID = '$($actionContext.References.Account)'"
+        KEYGROUPID,
+        LOCALLINEID,
+        HSID,
+        NAME,
+        CODE,
+        NICKNAME,
+        VISITORUSE,
+        LOCALIDXID
+    FROM keygroup'
 
-    $correlatedAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetPerson -QueryType 'query'
-
-    if ($null -ne $correlatedAccount) {
-        Write-Information "Getting linked  accessKey Cards of employee [$($actionContext.References.Account)]"F
-        $queryGetAccessKeys = "
-        SELECT
-            accesskeyid,
-            personid,
-            valid,
-            startdate,
-            enddate,
-            unlimited
-        FROM
-            accesskey
-        WHERE
-            personid = $($actionContext.References.Account)"
-
-        $accessKeyList = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetAccessKeys -QueryType 'query'
-    }
-
-    if ($null -ne $correlatedAccount -and $accessKeyList.count -gt 0) {
-        $action = 'DisableAccount'
-    } elseif ($null -ne $correlatedAccount) {
-        $action = 'NoAccessKeysFound'
-    } else {
-        $action = 'NotFound'
-    }
-
-    # Process
-    switch ($action) {
-        'DisableAccount' {
-            foreach ($accessKey in $accessKeyList) {
-                $queryUpdateAccessKey = "
-                UPDATE
-                    accesskey
-                SET VALID = 0
-                WHERE ACCESSKEYID = $($accessKey.AccessKeyId)
-                "
-
-                if (-not($actionContext.DryRun -eq $true)) {
-                    Write-Information "Disabling IProtect AccessKey with AccessKeyId: [$($accessKey.AccessKeyId)]"
-                    if (-not ($accessKey.valid -eq 0)) {
-                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $queryUpdateAccessKey -QueryType 'update'
-                    }
-                } else {
-                    Write-Information "[DryRun] Disable IProtect accessKey with AccessKeyId: [$($accessKey.AccessKeyId)], will be executed during enforcement"
+    $retrievedPermissions = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $querySelectKeyGroup -QueryType 'query'
+    # Make sure to test with special characters and if needed; add utf8 encoding.
+    foreach ($permission in $retrievedPermissions) {
+        $outputContext.Permissions.Add(
+            @{
+                DisplayName    = $permission.NAME
+                Identification = @{
+                    DisplayName = $permission.NAME
+                    Reference   = $permission.KEYGROUPID
                 }
-
-                $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "AccessKey with AccessKeyId [$($accessKey.AccessKeyId)] was successfully disabled"
-                        IsError = $false
-                    })
             }
-
-            if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
-                $outputContext.Success = $true
-            }
-            break
-        }
-
-        'NoAccessKeysFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Skipping disabling AccessKey(s)"
-                    IsError = $false
-                })
-            break
-        }
-
-
-        'NotFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-                    IsError = $false
-                })
-            break
-        }
+        )
     }
 } catch {
-    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
-        $auditMessage = "Could not disable IProtect account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $auditMessage = "Could not disable IProtect account. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
-            IsError = $true
-        })
 } finally {
     if ($null -ne $WebSession) {
         $null = Invoke-logout

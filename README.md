@@ -1,159 +1,181 @@
+# HelloID-Conn-Prov-Target-IProtect
 
-# HelloID-Conn-Prov-Target-Iprotect
+> [!IMPORTANT]
+> This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
-| :warning: Warning |
-|:---------------------------|
-| Note that this is a complex connector. Please contact Tools4ever before implementing this connector! |
+| :warning: Warning  - **Complex connector**                                                                                                                                      |
+| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Note that this is a complex connector. Please contact your local Tools4ever sales representative for further information and details about the implementation of this connector |
 
-| :warning: Warning |
-|:---------------------------|
+| :warning: Warning - **Work in progress**                                                                        |
+| :-------------------------------------------------------------------------------------------------------------- |
 | Note that this connector is "a work in progress" and therefore not ready to use in your production environment. |
 
-| :information_source: Information |
-|:---------------------------|
-| This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements. |
-<br />
+
 <p align="center">
   <img src="https://www.tools4ever.nl/connector-logos/iprotect-logo.png" width="500">
-</p> 
+</p>
 
 ## Table of contents
 
-- [Introduction](#Introduction)
-- [Release notes](#Release-Notes)
-- [Getting started](#Getting-started)
-  + [Connection settings](#Connection-settings)
-  + [Prerequisites](#Prerequisites)
-  + [Remarks](#Remarks)
-- [Setup the connector](#Setup-The-Connector)
-- [Getting help](#Getting-help)
-- [HelloID Docs](#HelloID-docs)
+- [HelloID-Conn-Prov-Target-IProtect](#helloid-conn-prov-target-iprotect)
+  - [Table of contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Getting started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Connection settings](#connection-settings)
+    - [Correlation configuration](#correlation-configuration)
+    - [Available lifecycle actions](#available-lifecycle-actions)
+    - [Field mapping](#field-mapping)
+  - [Remarks](#remarks)
+    - [AccessKeys Not Managed](#accesskeys-not-managed)
+    - [Employee and Person Account](#employee-and-person-account)
+    - [Correlation on FirstName and (Last) Name](#correlation-on-firstname-and-last-name)
+    - [Uniqueness Check for Person Object (FirstName and (Last) Name)](#uniqueness-check-for-person-object-firstname-and-last-name)
+    - [Enable and Disable Linked AccessKey](#enable-and-disable-linked-accesskey)
+    - [Delete Account with Removed Linked AccessKeys](#delete-account-with-removed-linked-accesskeys)
+    - [Permission Grants and Revokes on AccessKeys](#permission-grants-and-revokes-on-accesskeys)
+    - [SQL Queries](#sql-queries)
+    - [Reboarding](#reboarding)
+    - [SubPermissions](#subpermissions)
+  - [Development resources](#development-resources)
+    - [API endpoints](#api-endpoints)
+    - [API documentation](#api-documentation)
+  - [Getting help](#getting-help)
+  - [HelloID docs](#helloid-docs)
 
 ## Introduction
 
-_HelloID-Conn-Prov-Target-Iprotect_ is a _target_ connector. Iprotect provides an XMLSQL interfase over https, That allows you to programmatically interact with it's data. The HelloID connector uses the API endpoints listed in the table below.
-
-| Endpoint     | Description |
-| ------------ | ----------- |
-| https://`<ip`>:`<port`>/Webcontrols/xmlsql| Session cookie and all sql calls
-| https://`<ip`>:`<port`>/Webcontrols/j_security_check | Session login
-
-## Release notes
-Version 2.0.0
-
-This is a complete overhaul of the previous connector.
-It is not compatible with the previous version.
-
-Main Changes are:
-1) No longer uses the xml-import interface for the create, update and delete of accounts, but the general xmlsql interface instead.
-2) Implemented the management of Accesskeys and Licenseplates in the user cycle actions.
-
+_HelloID-Conn-Prov-Target-IProtect_ is a _target_ connector. _IProtect_ provides a set of REST API's that allow you to programmatically interact with its data.
 
 ## Getting started
+
+### Prerequisites
+
+- **IProtect Permissions**:<br>
+An IProtect account ("systeemgebruiker") must be created with sufficient rights to query and update the employees and AccessKeys
+Make sure that the box "Synchronisatie Beheerder" is checked in the "Detail Systeemgebruiker", and that the account has sufficient rights to query and update the IProtect database.
+- To verify this: login into the web GUI of IProtect with this account and check: The ability to successfully query the accesskey, employee and user tables with this account
+
+- **Local Agent**:<br>
+The connector should be run from a local agent.
+
+- **Concurrent sessions**:<br>
+Concurrent sessions in HelloID should be set to a **maximum of 1**! This is because a logout action may logout all connected sessions.
+
+- **SubPermissions**:<br>
+- Enable SubPermission to be able to see to which accessKeys the permissions are granted.
+
 
 ### Connection settings
 
 The following settings are required to connect to the API.
 
-| Setting      | Description                        | Mandatory   |
-| ------------ | -----------                        | ----------- |
-| UserName     | The UserName to connect to the API | Yes         |
-| Password     | The Password to connect to the API | Yes         |
-| BaseUrl      | The URL to the API ( https://`<ip`>:`<port`>/Webcontrols) | Yes         |
+| Setting  | Description                                               | Mandatory |
+| -------- | --------------------------------------------------------- | --------- |
+| UserName | The UserName to connect to the API                        | Yes       |
+| Password | The Password to connect to the API                        | Yes       |
+| BaseUrl  | The URL to the API ( https://`<ip`>:`<port`>/Webcontrols) | Yes       |
 
-### Prerequisites
+### Correlation configuration
 
-An Iprotect account ("systeemgebruiker") must be created with sufficient rights to query and update the employees and accesskeys
-Make sure that the box "synchronisatie beheerder" is checked in the "detail systeemgebruiker", and that the account has sufficient rights to query and update the iprotect database
+The correlation configuration is used to specify which properties will be used to match an existing account within _IProtect_ to a person in _HelloID_.
 
-To verify this: login into the web GUI  with a browser of iprotect with this account and check
-1.  The ability to successfully query the accesskey, employee and user tables with this account
+| Setting                   | Value               |
+| ------------------------- | ------------------- |
+| Enable correlation        | `True`              |
+| Person correlation field  | `ExternalId`        |
+| Account correlation field | `Employee.SalaryNR` |
 
+> More information about `Employee` and `Person` correlation please refer to: [Correlation on FirstName and (Last) Name](#correlation-on-firstname-and-last-name)
 
-### Remarks
-- Only NLD License Plates are supported by default. Unless there is a proper mapping for the country code, the lookup for license plates from different countries fails.
-- The CardClassId that defines the kind of an accesskey may differ between IProtect implementations. These are hardcoded in the Initialization section in the scripts. Default they are '2' for general access keys, and '6' for "license plates".
-- The connector manages exactly one AccessKey per HelloID Person.
-- The currently assigned Accesskeys with a different RCN than provided by HelloID are ignored and stay unmanaged from HelloID. Except for the license plates, these are managed in a separate flow.
-- Make sure that the AccessKeyRCN that is provided when creating a new account is fully padded (so '000001' instead of '1'.  The RCN may be automatically padded by Iprotect otherwise, which causes lookup errors.
-- The licence plate is Optional and always created as valid (active)
-- The valid property of the accesskey that is managed by HelloId is modified in the Disable and Enable Actions. By default unmanaged accesskeys are not modified.
-- The update action does not revoke AccessKeys because the accessKey is required and other HelloID actions depend on the reference. The access keys will be revoked in the delete script.
-- The account create.ps1 creates an account and grants optional accesskey and/or a license plate.
-- The accessKey is a standalone object in Iprotect and must be connected to an Employee account. The accessKey is required for the user life cycle and the permission (KeyGroups). So you must create a Custom complex property in the source mapping, which makes it possible to check in the business rules if a IProtect account has an AccessKey. _Person.Custom.HasAccesskey_. You can now create a Business Rule that makes it possible to make the disable/enable script and the permission scripts dependend hereof, so these actions do not get triggerd if the Iprotect account does have an accesskey linked.
-- The Enable and the Disable script grants and revokes the accesskey linked to a user account in Iprotect and not the account itself. An Account object does not have some sort of an active property.
+> [!TIP]
+> _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
 
+### Available lifecycle actions
 
-## Setup the connector
+The following lifecycle actions are available:
 
-> _How to setup the connector in HelloID._ Are special settings required.
+| Action                                  | Description                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| create.ps1                              | Creates a new person and employee account.                                                   |
+| delete.ps1                              | Removes an existing person and employee account, and removing the link of linked AccessKeys. |
+| disable.ps1                             | Disables an account, by disabling the linked AccessKeys. Sets the "VALID" property to false. |
+| enable.ps1                              | Enables an account, by enabling the linked AccessKeys. Sets the "VALID" property to true.    |
+| update.ps1                              | Updates the attributes of an person and employee account.                                    |
+| UniquenessCheck.ps1                     | Validate if persons combination `FirstName` and (last)`Name` is unique                       |
+| permissions/groups/grantPermission.ps1  | Grants specific KeyGroup permissions to each Accesskey linked to the account.                |
+| permissions/groups/revokePermission.ps1 | Revokes specific KeyGroup permissions from each Accesskey linked to the account.             |
+| permissions/groups/permissions.ps1      | Retrieves all available keyGroups permissions.                                               |
+| configuration.json                      | Contains the connection settings and general configuration for the connector.                |
+| fieldMapping.json                       | Defines mappings between person fields and target system person account fields.              |
 
-Create Custom Properties in HelloID
- - Person.Custom.AccessKeyID
- - Person.Custom.LicensePlate
- - Person.Custom.HasAccesskey    (Required for the businessRules)
- - Person.Custom.HasLicensePlate (Required for the businessRules)
+### Field mapping
 
-Note! The custom properties HasAccessKey and HasLicensePlate are required for the business rules, so you can create a dependency for the KeyGroups.
+The field mapping can be imported by using the _fieldMapping.json_ file.
 
-- HelloID session management must be configured so that only one action at a time is allowed. This is because a logout action may logout all connected sessions.
-- The connector should be run from a local povisioning agent.
+## Remarks
+### AccessKeys Not Managed
+- The scope of the connector is to manage Persons and Employees, as well as perform grants, revokes, and enable or disable linked AccessKeys. However, managing AccessKeys—such as creating, updating, or linking them—is **NOT** in scope.
+- This also means that when a person receives a new or additional AccessKey, the AccessKey must be manually enabled, and the permissions should be copied from the existing key.
+- With one exception, the linked AccessKey will be removed from the account during the delete action. See [Delete Account with Removed Linked AccessKeys](#delete-account-with-removed-linked-accesskeys).
 
-## Description of the available ps1 scripts
+### Employee and Person Account
+Although this connector manages Employees, we cannot ignore the Person object. This is a separate object within IProtect. An Employee object cannot exist without a Person object; however, the reverse is possible. The field mapping is divided into Person and Employee properties, with the connector code handling the rest.
 
-### Create.ps1
- - Creates or correlates a new employee. Expects the salaryNR as the ExternalID used for the correlation.
+### Correlation on FirstName and (Last) Name
+During correlation, the connector correlates based on the Employee.SalaryNR using a combined query to retrieve both the Person and Employee objects at once. Once this query returns a positive result, the account will be correlated. If no Employee is found, a separate query is performed to retrieve only the Person object based on `FirstName` and (Last) `Name` to avoid errors and duplicate accounts, and correlates the person account when one is found.
 
- - On a create of the employee, uses the provided $account.PersonName and $account.PersonFirstName to create or correlate the associated user object.
+### Uniqueness Check for Person Object (FirstName and (Last) Name)
+The uniqueness check ensures that the Person object is unique within the IProtect environment. The script validates the `personTable` for `FirstName` and (Last)`Name`. If an account is found, it checks whether an Employee account is linked. Only if an Employee account is also found, the uniqueness check determines that the Person object is **NOT** unique. If there is only a Person account without a linked Employee account, that Person account will be correlated.
 
- - On a Correlate of the employee, uses the provided $account.PersonName and $account.PersonFirstName to verify that the employee account does belong to the specified user. Will generate an error if they do not match.
+### Enable and Disable Linked AccessKey
+- The Enable and Disable scripts grant and revoke the AccessKey linked to a user account in IProtect, but not the account itself. An Account object does not have an active property.
+- The connector does not update newly assigned AccessKeys that are linked after "Account Access" has been granted.
 
- - if the flag $updatePerson is given,  properties of the account will be updated for existing accounts. (they are always updated/set for new accounts). This includes the Accesskey and Licenseplate when provided.
+### Delete Account with Removed Linked AccessKeys
+- Before deleting the Person and Employee, the Delete action first unlinks all linked AccessKeys.
+- If there are still unmanaged AccessKeys on the account, the deletion of the Person associated with the account may fail.
 
- - Expects the salaryNR as the ExternalID for the person, and the $account.PersonName and the GivenName of the person as required parameters.
+### Permission Grants and Revokes on AccessKeys
+- KeyGroup permissions are granted or revoked on each linked AccessKey of the IProtect account.
+- If no linked AccessKey is present during the permission granting process, the grant script will result in an error and retry until an AccessKey is linked.
+- The connector does not update newly assigned AccessKeys after the permission has been granted.
+- The best practice should be when a person receive a new AccessKey the granted permissions are copied for a existing Key.
+- To apply permissions to newly linked AccessKeys with HelloID, you can place the grant script as update script and manually run "Force update permissions in definition."
 
- - Produces as Accountreference an object with the following 4 fields: EmployeeId,PersonId,AccessKeyId,AccessKeyIdLicensePlate
+### SQL Queries
+- The connector largely consists of SQL queries that are sent to the IProtect endpoints. There are some restrictions compared to standard SQL, which can be found in the documentation.
+- The linking key between the Employee and Person objects is the `PersonId`.
 
-    Note that this are internal IDs of iprotect.
+### Reboarding
+Reboarding an employee after they are deleted from HelloID is supported, with one side note. AccessKeys are automatically unlinked from the account during the delete action and will not be present when the employee is recreated.
 
-### Update.ps1
-- Updates the properties of the account. Can be used to assign a new accesskey or licenseplate to an account (if the account does not have one already), or to update the RCN of an existing one (when the account does already have one).
-
- Note, it cannot be used to remove a standard accesskey association from an account.
-
-### Delete.ps1
-- Removes the link to the person from the managed Accesskey and licenseplates, and then deletes the employee and its associated person object.
-
-  Note, it is assumed that keygroup memberschips are already removed by Helloid prior of running this script.
-
-  Note, if there are still unmanaged accesskeys on the account, the deletion of the Person associated with the account may fail.
-
-### Enable.ps1
-- Sets the "VALID" property of the Accesskey of the account to true.
-
-### Disable.ps1
--  Sets the "VALID" property of the Accesskey of the account to false.
-
-### Entitlements.ps1
-- Retrieves the keyGroups.
-
-### Grant.ps1
-- Assigns the managed Accesskey of the account to the specified keygroup.
-
-### Revoke.ps1
-- Removes the managed Accesskey of the account from the specified keygroup.
+### SubPermissions
 
 
-## Available api documentation (included in this repo for info)
+## Development resources
 
-1. "iProtect API v2.10.doc   Description of the xmlsql api, used for generic sql queries and updates
-2. "Jdbc handleiding v0.3.pdf"   Some info regarding the (limitiations of) the supported sql
+### API endpoints
+
+The following endpoints are used by the connector
+
+| Endpoint          | Description                      |
+| ----------------- | -------------------------------- |
+| /xmlsql           | Session cookie and all sql calls |
+| /j_security_check | Session login                    |
+
+### API documentation
+- "iProtect API v2.10.doc   Description of the xmlsql api, used for generic sql queries and updates
+- "Jdbc handleiding v0.3.pdf"   Some info regarding the (limitations of) the supported sql
 
 ## Getting help
 
-> _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/hc/en-us/articles/360012558020-Configure-a-custom-PowerShell-target-system) pages_
+> [!TIP]
+> _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems.html) pages_.
 
-> _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com)_
+> [!TIP]
+>  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com/forum/helloid-connectors/provisioning/899-helloid-provisioning-helloid-conn-prov-target-iprotect)_.
 
 ## HelloID docs
 

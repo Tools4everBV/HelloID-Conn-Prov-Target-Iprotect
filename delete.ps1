@@ -1,84 +1,109 @@
-#####################################################
-# HelloID-Conn-Prov-Target-Iprotect-Delete
-#
-# Version: 2.0.0
-#####################################################
-# Initialize default values
-$config = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$aRef = $AccountReference | ConvertFrom-Json
-$success = $false
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
-
-#Set DeletePerson to false if deleting the employee object is sufficient, leaving the person object intact.
-#deleteperson may easily fail if there are still other database tables that refer to it
-$deletePerson = $true
+##################################################
+# HelloID-Conn-Prov-Target-IProtect-Delete
+# PowerShell V2
+##################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-# Set debug logging
-switch ($($config.IsDebug)) {
-    $true { $VerbosePreference = 'Continue' }
-    $false { $VerbosePreference = 'SilentlyContinue' }
-}
-
 #region functions
-function Get-JSessionID {
+function Resolve-IProtectError {
     [CmdletBinding()]
     param (
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
     )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
+        }
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
+        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                }
+            }
+        }
+        try {
+            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
+            # Make sure to inspect the error result object and add only the error message as a FriendlyMessage.
+            # $httpErrorObj.FriendlyMessage = $errorDetailsObject.message
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails # Temporarily assignment
+        } catch {
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
+        }
+        Write-Output $httpErrorObj
+    }
+}
+
+function Get-JSessionID {
+    [CmdletBinding()]
+    param ()
 
     $splatParams = @{
-        Uri                = "$($config.BaseUrl)/xmlsql"
+        Uri                = "$($actionContext.Configuration.BaseUrl)/xmlsql"
         Method             = 'Post'
-        Headers            = @{'Content-Type' = 'application/x-www-form-urlencoded' }
+        Headers            = @{
+            'Content-Type' = 'application/x-www-form-urlencoded'
+        }
         UseBasicParsing    = $true
         TimeoutSec         = 60
         MaximumRedirection = 0
-        SessionVariable    = 'script:WebSession'
+        SessionVariable    = 'WebSession'
     }
-
-    if ($config.ProxyAddress) {
-        $splatParams['Proxy'] = $config.ProxyAddress
-    }
-
     try {
-        $requestResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue -Verbose:$false
+        Write-Information 'Getting Get-JSessionID'
+        $requestResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue
         if ($null -ne $requestResult.Headers) {
             if ($null -ne $requestResult.Headers['Set-Cookie'] ) {
                 $authorizationCookie = $requestResult.Headers['Set-Cookie']
 
                 if ($authorizationCookie.IndexOf(';') -gt 0) {
-                    $jsessionId = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(';'));
+                    $jSessionId = $authorizationCookie.Substring(0, $authorizationCookie.IndexOf(';'))
                 }
             }
         }
-        Write-Output $jsessionId
+        Write-Output $WebSession, $jSessionId
     } catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
 
-function Get-AuthenticationResult {
+function Confirm-AuthenticationResult {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
         [string]
-        $JSessionID
-    )
+        $JSessionID,
 
+        [Parameter(Mandatory)]
+        $WebSession
+    )
+    Write-Information 'Authenticate with the IProtect'
     $splatParams = @{
-        Uri                = "$($config.BaseUrl)/j_security_check"
+        Uri                = "$($actionContext.Configuration.BaseUrl)/j_security_check"
         Method             = 'POST'
-        Headers            = @{'Content-Type' = 'application/x-www-form-urlencoded'; 'Cookie' = $JSessionID }
+        Headers            = @{
+            'Content-Type' = 'application/x-www-form-urlencoded'
+            'Cookie'       = $JSessionID
+        }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        Body               = "&j_username=$($config.UserName)&j_password=$($config.Password)"
-        WebSession         = $script:WebSession
+        Body               = "&j_username=$($actionContext.Configuration.UserName)&j_password=$($actionContext.Configuration.Password)"
+        WebSession         = $WebSession
     }
     try {
-        Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue -Verbose:$false
+        $authenticationResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue
+        if (-Not ($authenticationResult.StatusCode -eq 302)) {
+            throw "Authentication failed with error [$($authenticationResult.StatusCode)]"
+        }
     } catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
@@ -87,40 +112,50 @@ function Get-AuthenticationResult {
 function Invoke-IProtectQuery {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]
         $JSessionID,
 
-        [Parameter(Mandatory)]
+        [Parameter()]
+        $WebSession,
+
+        [Parameter()]
         [string]
         $Query,
 
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]
-        $QueryType,
-
-        [Parameter(Mandatory = $false)]
-        [string]
-        $QueryDescription
+        $QueryType
     )
-
+    if ($null -eq $JSessionID ) {
+        throw 'JSessionID parameter is required to execute the query'
+    }
+    if ($null -eq $WebSession) {
+        throw 'WebSession parameter is required to execute the query'
+    }
+    if ($null -eq $Query) {
+        throw 'Query parameter is required to execute the query'
+    }
+    if ($null -eq $QueryType) {
+        throw 'QueryType is required to execute the query'
+    }
     switch ($QueryType) {
-        'query' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$query</sql></query>" }
-        'update' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$query</sql></update>" }
+        'query' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><query><sql>$($query)</sql></query>" }
+        'update' { $queryBody = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><update><sql>$($query)</sql></update>" }
     }
 
     $splatParams = @{
-        Uri                = "$($config.BaseUrl)/xmlsql"
+        Uri                = "$($actionContext.Configuration.BaseUrl)/xmlsql"
         Method             = 'POST'
-        Headers            = @{'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'; 'Cookie' = $JSessionID }
+        Headers            = @{
+            'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'
+            'Cookie' = $JSessionID
+        }
         UseBasicParsing    = $true
         MaximumRedirection = 0
         ContentType        = 'text/xml;charset=ISO-8859-1'
-        Body               = $queryBody;
-        WebSession         = $script:WebSession
-    }
-    if ($config.ProxyServer) {
-        $splatParams['Proxy'] = $config.ProxyServer
+        Body               = $queryBody
+        WebSession         = $WebSession
     }
 
     try {
@@ -128,23 +163,16 @@ function Invoke-IProtectQuery {
         switch ($queryType) {
             'query' {
                 [xml] $xmlResult = $queryResult.Content
-                # $resultNode = $xmlResult.RESULT
                 $resultNode = $xmlResult.item('RESULT')
-                $nodePath = 'ROWSET'
-                $rowsetNode = $resultNode.SelectSingleNode($nodePath)
-
-                $nodePath = 'ERROR'
-                $errorNode = $resultNode.SelectSingleNode($nodePath)
+                $rowSetNode = $resultNode.SelectSingleNode( 'ROWSET')
+                $errorNode = $resultNode.SelectSingleNode('ERROR')
 
                 if ($null -ne $errorNode) {
-                    $errorDescription = $ErrorNode.DESCRIPTION
-                    $errorMessage = "Error executing Iprotect sql command. $QueryDescription. Error: $errorDescription"
-                    throw $errorMessage
+                    throw $errorNode.DESCRIPTION
                 }
 
-                if ($null -ne $rowsetNode) {
-                    $nodePath = 'ROW'
-                    $rowNodes = $rowsetNode.SelectNodes($nodePath)
+                if ($null -ne $rowSetNode) {
+                    $rowNodes = $rowSetNode.SelectNodes('ROW')
                     if ((-not ($null -eq $rowNodes) -and ($rowNodes.Count -gt 0))) {
                         Write-Output $rowNodes
                     } else {
@@ -157,7 +185,7 @@ function Invoke-IProtectQuery {
                 $resultNode = $xmlResult.item('RESULT')
                 $errorNode = $resultNode.SelectSingleNode('ERROR')
                 if ($null -ne $errorNode) {
-                    throw "Error executing Iprotect sql command. $QueryDescription. Error: $($errorNode.DESCRIPTION)";
+                    throw $errorNode.DESCRIPTION
                 }
                 Write-Output $resultNode
             }
@@ -169,165 +197,198 @@ function Invoke-IProtectQuery {
 
 function Invoke-Logout {
     [CmdletBinding()]
-    param ()
-
+    param (
+        [Parameter()]
+        $WebSession
+    )
     $headers = @{
         'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'
         'Cookie' = $JSessionID
     }
-    $body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><LOGOUT></LOGOUT>";
+    $body = "<?xml version=`"1.0`" encoding=`"UTF-8`"?><LOGOUT></LOGOUT>"
     $splatWebRequestParameters = @{
-        Uri             = $config.BaseUrl + "/xmlsql"
+        Uri             = $actionContext.Configuration.BaseUrl + "/xmlsql"
         Method          = 'Post'
         Headers         = $headers
         UseBasicParsing = $true
         ContentType     = 'text/xml;charset=ISO-8859-1'
-        Body            = $body;
-        WebSession      = $script:WebSession
+        Body            = $body
+        WebSession      = $WebSession
     }
-
-    if (-not  [string]::IsNullOrEmpty($config.ProxyAddress)) {
-        $splatWebRequestParameters['Proxy'] = $config.ProxyAddress
-    }
-
     try {
-        Invoke-WebRequest @splatWebRequestParameters -Verbose:$false  -ErrorAction SilentlyContinue
+        Invoke-WebRequest @splatWebRequestParameters -Verbose:$false -ErrorAction SilentlyContinue
     } catch {
-        # logout failure is not critical, so only log "
-        $errorMessage = "Warning, Iprotect logout failed error: $($_)"
-        Write-Verbose $errorMessage
-        $auditLogs.Add([PSCustomObject]@{
-                Message = $errorMessage
+        # Logout failure is not critical, so only log"
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "Warning, IProtect logout failed error: $($_)"
                 IsError = $false
             })
-
-    }
-}
-
-function Resolve-HTTPError {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
-    )
-    process {
-        $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ''
-        }
-        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-            if ($ErrorObject.Exception.Response) {
-                $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-            } else {
-                $httpErrorObj.ErrorMessage = "$($ErrorObject.Exception.Message) $($ErrorObject.Exception.InnerException.Message)".trim(" ")
-            }
-        }
-        Write-Output $httpErrorObj
     }
 }
 #endregion
 
 try {
-    # Add an auditMessage showing what will happen during enforcement
-    if ($dryRun -eq $true) {
-        $auditLogs.Add([PSCustomObject]@{
-                Message = "Delete Iprotect account from: [$($p.DisplayName)] will be executed during enforcement"
-            })
+    # Verify if [aRef] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw 'The account reference could not be found'
     }
 
-    if (-not($dryRun -eq $true)) {
-        Write-Verbose "Deleting Iprotect account with accountReference: [$($aRef.EmployeeId)]"
-        $success = $false
+    $webSession, $jSessionID = Get-JSessionID
+    $null = Confirm-AuthenticationResult -JSessionID $jSessionID -WebSession $webSession
 
-        $jSessionID = Get-JSessionID
-        $authenticationResult = Get-AuthenticationResult -JSessionID $jSessionID
+    Write-Information 'Verifying if a IProtect account exists'
+    $queryGetPerson = "
+    SELECT
+        TABLEEMPLOYEE.PERSONID AS person_personId,
+        TABLEPERSON.NAME AS person_Name,
+        TABLEPERSON.FirstName AS person_FirstName,
+        TABLEPERSON.Prefix AS person_Prefix,
+        TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
+        TABLEEMPLOYEE.Language AS employee_Language,
+        TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
+        TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
+        TABLEEMPLOYEE.HireDate AS employee_HireDate,
+        TABLEEMPLOYEE.TerminationDate AS employee_TerminationDate
+    FROM Person AS TABLEPERSON
+    LEFT OUTER JOIN employee AS TABLEEMPLOYEE
+        ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
+    WHERE
+        TABLEPERSON.personID = '$($actionContext.References.Account)'"
 
-        if (-Not ($authenticationResult.StatusCode -eq 302)) {
-            $success = $false
-            $ErrorMessage = "iprotect query for person " + $p.ExternalId + ". Authentication failed with error $($authenticationResult.StatusCode)";
-            throw $ErrorMessage
+    $correlatedAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetPerson -QueryType 'query'
+
+    if ($null -ne $correlatedAccount) {
+        Write-Information "Getting assigned accessKey Cards of employee [$($correlatedAccount.person_PersonId)]"
+        $queryGetAccessKeys = "
+        SELECT
+            accesskeyid,
+            personid,
+            valid,
+            startdate,
+            enddate,
+            unlimited
+        FROM
+            accesskey
+        WHERE
+            personid = $($correlatedAccount.person_PersonId)"
+        $accessKeyList = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetAccessKeys -QueryType 'query'
+
+    }
+
+    $actionList = [System.Collections.Generic.list[object]]::new()
+    if ($null -ne $correlatedAccount) {
+        if ($accessKeyList.count -gt 0) {
+            $actionList.Add('UnassignAccessKeys')
         }
+        $actionList.Add('DeleteEmployeeAccount')
+        $actionList.Add('DeletePersonAccount')
+    } else {
+        $actionList.Add('NotFound')
+    }
 
-        # it is assumed that keygroup memberships for both the accesskey and the licenseplate (if any)  are removed by helloid prior of running this delete script
+    # Process
+    $removingOrder = 'UnassignAccessKeys', 'DeleteEmployeeAccount', 'DeletePersonAccount', 'NotFound'
+    foreach ($action in ($actionList | Sort-Object { $removingOrder.IndexOf($_) })) {
+        switch ($action) {
+            'DeleteEmployeeAccount' {
+                $query = "
+                DELETE FROM EMPLOYEE
+                WHERE EMPLOYEEID = $($correlatedAccount.employee_employeeId)"
 
-        # remove the assigment to the user from the Accesskey
-        if (![string]::IsNullOrEmpty($aRef.AccesskeyId)) {
-            $query = "UPDATE Accesskey SET PersonID = null WHERE ACCESSKEYID = $($aRef.AccesskeyID)"
-            $QueryDescription = "Unassign accesskey [$($aRef.AccesskeyID)] from user [$($aRef.EmployeeId)]"
-            $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
-            $auditLogs.Add([PSCustomObject]@{
-                    Message = "Successfully executed task:  `'$QueryDescription`' "
-                    IsError = $false
-                })
-        }
-
-        # remove the assigment to the user from the Licensplate
-        if (![string]::IsNullOrEmpty($aRef.AccessKeyIdLicensePlate)) {
-            $query = "UPDATE Accesskey SET PersonID = null WHERE ACCESSKEYID = $($aRef.AccessKeyIdLicensePlate)"
-            $QueryDescription = "Unassign LicensePlate [$($aRef.AccessKeyIdLicensePlate)] from employee [$($aRef.EmployeeId)]"
-            $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
-            $auditLogs.Add([PSCustomObject]@{
-                    Message = "Successfully executed task:  `'$QueryDescription`' "
-                    IsError = $false
-                })
-        }
-
-        # employee object has to be deleted prior to the person object because of dependency
-        $query = "DELETE FROM EMPLOYEE WHERE EMPLOYEEID = $($aRef.EmployeeID)"
-        $queryDescription = "Deleting Employee object with EmployeeId $($aRef.EmployeeID)"
-
-        try {
-            $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
-        } catch {
-            if (-not $_.Exception.Message -match 'SQLExtendedException: No where match') {
-                throw $_
+                if (-not($actionContext.DryRun -eq $true)) {
+                    Write-Information "Deleting IProtect Employee account with accountReference: [$($actionContext.References.Account)]"
+                    try {
+                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update'
+                    } catch {
+                        if (-not $_.Exception.Message -match 'SQLExtendedException: No where match') {
+                            throw $_
+                        }
+                    }
+                } else {
+                    Write-Information "[DryRun] Delete IProtect Employee account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
+                }
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = 'Delete IProtect Employee account was successful'
+                        IsError = $false
+                    })
+                break
             }
-            Write-Verbose "Employee account [$($aRef.EmployeeID)] already removed!" -Verbose
-        }
 
-        if ($deletePerson -eq $true) {
-            $query = "DELETE FROM PERSON WHERE PERSONID = $($aRef.PersonID)"
-            $queryDescription = "Deleting person object with personid $($aRef.PersonID)"
-            $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType "update" -QueryDescription $QueryDescription
-        }
+            'DeletePersonAccount' {
+                $query = "
+                DELETE FROM PERSON
+                WHERE PERSONID = $($actionContext.References.Account)"
 
-        $success = $true
-        $auditLogs.Add([PSCustomObject]@{
-                Message = "Iprotect account  delete  for employee " + $p.ExternalId + " was succesful"
-                IsError = $false
-            })
+                if (-not($actionContext.DryRun -eq $true)) {
+                    Write-Information "Deleting IProtect Person account with accountReference: [$($actionContext.References.Account)]"
+                    try {
+                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update'
+                    } catch {
+                        if (-not $_.Exception.Message -match 'SQLExtendedException: No where match') {
+                            throw $_
+                        }
+                    }
+                } else {
+                    Write-Information "[DryRun] Delete IProtect Person account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
+                }
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = 'Delete IProtect Person account was successful'
+                        IsError = $false
+                    })
+                break
+            }
+
+            'UnassignAccessKeys' {
+                foreach ($accessKey in $accessKeyList) {
+                    $query = "
+                        UPDATE Accesskey
+                        SET PersonID = null
+                        WHERE ACCESSKEYID = $($accessKey.AccessKeyId)"
+                    if (-not($actionContext.DryRun -eq $true)) {
+                        Write-Information "Unassign IProtect AccessKey [$($accessKey.AccessKeyId)] from account [$($actionContext.References.Account)]"
+                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $query -QueryType 'update'
+                    } else {
+                        Write-Information "[DryRun] Unassign IProtect AccessKey [$($accessKey.AccessKeyId)] from account [$($actionContext.References.Account)], will be executed during enforcement"
+                    }
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Message = "Unassign IProtect AccessKey [$($accessKey.AccessKeyId)] was successful"
+                            IsError = $false
+                        })
+                }
+                break
+            }
+
+            'NotFound' {
+                Write-Information "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = "IProtect account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
+                        IsError = $false
+                    })
+                break
+            }
+        }
+    }
+    if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
     }
 } catch {
-
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-        $errorObj = Resolve-HTTPError -ErrorObject $ex
-        $errorMessage = "Could not delete Iprotect account. Error: $($errorObj.ErrorMessage)"
+        $errorObj = Resolve-IProtectError -ErrorObject $ex
+        $auditMessage = "Could not delete IProtect account. Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $errorMessage = "Could not delete Iprotect account. Error: $($ex.Exception.Message)"
+        $auditMessage = "Could not delete IProtect account. Error: $($_.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    Write-Verbose $errorMessage
-    $auditLogs.Add([PSCustomObject]@{
-            Message = $errorMessage
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
             IsError = $true
         })
 } finally {
-
-    if ($null -ne $script:WebSession) {
+    if ($null -ne $WebSession) {
         $null = Invoke-logout
     }
-
-    $result = [PSCustomObject]@{
-        Success   = $success
-        Auditlogs = $auditLogs
-    }
-    Write-Output $result | ConvertTo-Json -Depth 10
 }
