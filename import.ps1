@@ -328,9 +328,16 @@ try {
                 }
             }
 
+            if ([string]::IsNullOrEmpty($account.PERSON_PREFIX)) {
+                $displayName = $account.PERSON_FIRSTNAME + ' ' + $account.PERSON_NAME
+            }
+            else {
+                $displayName = $account.PERSON_FIRSTNAME + ' ' + $account.PERSON_PREFIX + ' ' + $account.PERSON_NAME 
+            }
+
             Write-Output @{
                 AccountReference = $account.PERSON_PERSONID
-                DisplayName      = $account.PERSON_FIRSTNAME + ' ' + $account.PERSON_NAME
+                DisplayName      = $displayName
                 UserName         = $account.PERSON_PERSONID
                 Enabled          = $active
                 Data             = $returnDataObject
