@@ -23,7 +23,8 @@ function Resolve-IProtectError {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -36,7 +37,8 @@ function Resolve-IProtectError {
             # Make sure to inspect the error result object and add only the error message as a FriendlyMessage.
             # $httpErrorObj.FriendlyMessage = $errorDetailsObject.message
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails # Temporarily assignment
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -71,7 +73,8 @@ function Get-JSessionID {
             }
         }
         Write-Output $WebSession, $jSessionId
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -87,6 +90,7 @@ function Confirm-AuthenticationResult {
         $WebSession
     )
     Write-Information 'Authenticate with the IProtect'
+    $encodedPassword = [System.Web.HttpUtility]::UrlEncode($actionContext.Configuration.Password)
     $splatParams = @{
         Uri                = "$($actionContext.Configuration.BaseUrl)/j_security_check"
         Method             = 'POST'
@@ -96,15 +100,19 @@ function Confirm-AuthenticationResult {
         }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        Body               = "&j_username=$($actionContext.Configuration.UserName)&j_password=$($actionContext.Configuration.Password)"
+        Body               = "&j_username=$($actionContext.Configuration.UserName)&j_password=$encodedPassword"
         WebSession         = $WebSession
     }
     try {
         $authenticationResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue
+        if ($authenticationResult.Headers.Location -like '*Webcontrols/login_error.html') {
+            throw 'Authentication failed with error [Invalid username and/or password or not licensed]'
+        }
         if (-Not ($authenticationResult.StatusCode -eq 302)) {
             throw "Authentication failed with error [$($authenticationResult.StatusCode)]"
         }
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -153,7 +161,7 @@ function Invoke-IProtectQuery {
         }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        ContentType        = 'text/xml;charset=ISO-8859-1'
+        ContentType        = 'text/xml;charset=UTF-8'
         Body               = $queryBody
         WebSession         = $WebSession
     }
@@ -162,26 +170,46 @@ function Invoke-IProtectQuery {
         $queryResult = Invoke-WebRequest @splatParams -Verbose:$false
         switch ($queryType) {
             'query' {
-                [xml] $xmlResult = $queryResult.Content
-                $resultNode = $xmlResult.item('RESULT')
-                $rowSetNode = $resultNode.SelectSingleNode( 'ROWSET')
-                $errorNode = $resultNode.SelectSingleNode('ERROR')
-
-                if ($null -ne $errorNode) {
-                    throw $errorNode.DESCRIPTION
-                }
-
-                if ($null -ne $rowSetNode) {
-                    $rowNodes = $rowSetNode.SelectNodes('ROW')
-                    if ((-not ($null -eq $rowNodes) -and ($rowNodes.Count -gt 0))) {
-                        Write-Output $rowNodes
-                    } else {
-                        Write-Output $null
+                if ($queryResult.Content -ne $null) {
+                    if ($queryResult.Content -is [byte[]]) {
+                        $contentString = [System.Text.Encoding]::UTF8.GetString($queryResult.Content)
+                    }
+                    else {
+                        $contentString = $queryResult.Content
+                    }
+                    [xml]$xmlResult = $contentString
+                    $resultNode = $xmlResult.RESULT
+                    $errorNode = $resultNode.SelectSingleNode('ERROR')
+                    if ($null -ne $errorNode) {
+                        $errorDescription = $errorNode.DESCRIPTION
+                        if ($null -ne $errorDescription) {
+                            throw $errorDescription
+                        }
+                        else {
+                            throw "An error occurred but no description was found."
+                        }
+                    }
+                    $rowSetNode = $resultNode.SelectSingleNode('ROWSET')
+                    if ($null -ne $rowSetNode) {
+                        $rowNodes = $rowSetNode.SelectNodes('ROW')
+                        if ($rowNodes.Count -gt 0) {
+                            foreach ($row in $rowNodes) {
+                                $rowData = @{}
+                                foreach ($childNode in $row.ChildNodes) {
+                                    $rowData[$childNode.Name] = $childNode.InnerText
+                                }
+                                $rowDataObject = [PSCustomObject]$rowData
+                                Write-Output $rowDataObject
+                            }
+                        }
+                        else {
+                            Write-Output $null
+                        }
                     }
                 }
             }
             'update' {
-                [xml] $xmlResult = $queryResult.Content
+                [xml] $xmlResult = $queryResult
                 $resultNode = $xmlResult.item('RESULT')
                 $errorNode = $resultNode.SelectSingleNode('ERROR')
                 if ($null -ne $errorNode) {
@@ -190,7 +218,8 @@ function Invoke-IProtectQuery {
                 Write-Output $resultNode
             }
         }
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -199,8 +228,13 @@ function Invoke-Logout {
     [CmdletBinding()]
     param (
         [Parameter()]
+        [string]
+        $JSessionID,
+        
+        [Parameter()]
         $WebSession
     )
+
     $headers = @{
         'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'
         'Cookie' = $JSessionID
@@ -216,8 +250,9 @@ function Invoke-Logout {
         WebSession      = $WebSession
     }
     try {
-        Invoke-WebRequest @splatWebRequestParameters -Verbose:$false -ErrorAction SilentlyContinue
-    } catch {
+        $null = Invoke-WebRequest @splatWebRequestParameters -Verbose:$false -ErrorAction SilentlyContinue
+    }
+    catch {
         # Logout failure is not critical, so only log"
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "Warning, IProtect logout failed error: $($_)"
@@ -264,49 +299,60 @@ try {
             TABLEEMPLOYEE.SALARYNR = '$($correlationValue)'"
 
         Write-Information "Finding Employee with $correlationField [$($correlationValue)]"
-        $correlateEmployeeAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetEmployee -QueryType 'query'
-        # $correlateEmployeeAccount = [PSCustomObject]@{
-        #     person_PersonId          = 123
-        #     person_Name              = 'Doe'
-        #     person_FirstName         = 'John'
-        #     person_Prefix            = 'J.'
-        #     employee_BirthDate       = '10/15/1980 00:00:00'
-        #     employee_Language        = '1'
-        #     employee_employeeId      = 19990
-        #     employee_salaryNr        = '1000999'
-        #     employee_HireDate        = '2020-01-10'
-        #     employee_TerminationDate = $null
-        # }
+
+        $splatGetEmployee = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Query      = $queryGetEmployee
+            QueryType  = 'query'
+        }
+
+        $correlateEmployeeAccount = Invoke-IProtectQuery @splatGetEmployee
+
         $personObject = [PSCustomObject]@{}
         $employeeObject = [PSCustomObject]@{}
         if ($correlateEmployeeAccount ) {
             foreach ($property in $correlateEmployeeAccount.PSObject.Properties.Name) {
-                if ($property.StartsWith('person')) {
-                    $PersonObject | Add-Member @{ $property.Replace('person_', '') = $correlateEmployeeAccount.$property }
-                } elseif ($property.StartsWith('employee')) {
-                    $employeeObject | Add-Member  @{ $property.Replace('employee_', '') = $correlateEmployeeAccount.$property }
+                if ($property.StartsWith('PERSON')) {
+                    $PersonObject | Add-Member @{ $property.Replace('PERSON_', '') = $correlateEmployeeAccount.$property }
+                }
+                elseif ($property.StartsWith('EMPLOYEE')) {
+                    $employeeObject | Add-Member  @{ $property.Replace('EMPLOYEE_', '') = $correlateEmployeeAccount.$property }
                 }
             }
         }
 
         if (($correlateEmployeeAccount | Measure-Object).Count -eq 0) {
+            Write-Information "No employee found. Check if only a person exsists"
+
             $queryGetPerson = "
             SELECT
-                $($actionContext.Data.Person.PSObject.Properties.Name -Join ',')
-            FROM
-                PERSON
+            TABLEPERSON.PERSONID AS person_personId,
+            TABLEPERSON.NAME AS person_Name,
+            TABLEPERSON.FirstName AS person_FirstName,
+            TABLEPERSON.Prefix AS person_Prefix,
+            TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
+            TABLEEMPLOYEE.Language AS employee_Language,
+            TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
+            TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
+            TABLEEMPLOYEE.HireDate AS employee_HireDate,
+            TABLEEMPLOYEE.TerminationDate AS employee_TerminationDate
+            FROM person TABLEPERSON
+                LEFT OUTER JOIN employee TABLEEMPLOYEE ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
             WHERE
-                NAME = '$($actionContext.Data.Person.Name)'
-                AND FIRSTNAME = '$($actionContext.Data.Person.FirstName)'
+                TABLEPERSON.NAME = '$($actionContext.Data.Person.Name)'
+                AND TABLEPERSON.FIRSTNAME = '$($actionContext.Data.Person.FirstName)'
             "
-            $correlatedPersonAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetPerson -QueryType 'query'
-            # $correlatedPersonAccount = [PSCustomObject]@{
-            #     PersonId  = 123
-            #     FirstName = 'John'
-            #     Name      = 'Doe'
-            #     Prefix    = 'J.'
-            # }
-            $personObject = $correlatedPersonAccount
+
+            $splatGetUser = @{
+                JSessionID = $jSessionID
+                WebSession = $webSession
+                Query      = $queryGetPerson
+                QueryType  = 'query'
+            }
+            $personObject = Invoke-IProtectQuery @splatGetUser
+            $correlatedPersonAccount = $personObject | Where-Object { $_.EMPLOYEE_EMPLOYEEID -eq "" }            
+
         }
     }
 
@@ -315,17 +361,23 @@ try {
     $personCount = ($correlatedPersonAccount | Measure-Object).Count
     if ($employeeCount -eq 1) {
         $actionList.Add('CorrelateAccount')
-    } elseif ($employeeCount -gt 1) {
+    }
+    elseif ($employeeCount -gt 1) {
         $actionList.Add('MultipleEmployeeFound')
-    } elseif ($personCount -eq 1) {
+    }
+    elseif ($personCount -eq 1) {
         $actionList.Add('CreateEmployee')
-        $outputContext.AccountReference = $correlatedPersonAccount.PERSONID
-    } elseif ($personCount.Count -gt 1) {
+        $outputContext.AccountReference = $correlatedPersonAccount.PERSON_PERSONID
+    }
+    elseif ($personCount -gt 1) {
         $actionList.Add('MultiplePersonFound')
-    } else {
+    }
+    else {
         $actionList.Add('CreatePerson')
         $actionList.Add('CreateEmployee')
     }
+
+    Write-Information "Actions [$($actionList -join ', ')]"
 
     # Process
     foreach ($action in $actionList) {
@@ -333,14 +385,18 @@ try {
             'CreatePerson' {
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 $queryProperties = @()
-                switch ($actionContext.Data.Person) {
-                    { -not [string]::IsNullOrEmpty($_.FIRSTNAME) } { $queryProperties += "'$($actionContext.Data.Person.FIRSTNAME)'" }
-                    { -not [string]::IsNullOrEmpty($_.NAME) } { $queryProperties += "'$($actionContext.Data.Person.NAME)'" }
-                    { -not [string]::IsNullOrEmpty($_.PREFIX) } { $queryProperties += "'$($actionContext.Data.Person.PREFIX)'" }
+                foreach ($prop in $actionContext.Data.Person.PSObject.Properties) {
+                    $queryProperties += switch ($prop.Name ) {
+                        'FIRSTNAME' { "'$($prop.value)'" ; break }
+                        'NAME' { "'$($prop.value)'" ; break }
+                        'PREFIX' { "'$($prop.value)'" ; break }
+                    }
                 }
+
                 $columnsCreatePerson = $(($actionContext.Data.Person | Select-Object * -ExcludeProperty personId).PSObject.Properties.Name -join ', ')
+
                 $queryCreatePerson = "
-                INSERT INTO Person ($columnsCreatePerson)
+                INSERT INTO Person ($($columnsCreatePerson))
                 VALUES ($($queryProperties -join ', '))"
 
                 $queryRetrievePerson = "
@@ -350,9 +406,25 @@ try {
 
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Creating and correlating IProtect Person account with NAME =  $($actionContext.Data.Name) , FIRSTNAME = $($actionContext.Data.Name)"
-                    $null = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryCreatePerson -QueryType 'update'
+
+                    $splatCreateUser = @{
+                        JSessionID = $jSessionID
+                        WebSession = $webSession
+                        Query      = $queryCreatePerson
+                        QueryType  = 'update'
+                    }
+                    
+                    $null = Invoke-IProtectQuery @splatCreateUser
 
                     Write-Information 'Retrieve PersonID from just created person'
+
+                    $splatGetCreatedUser = @{
+                        JSessionID = $jSessionID
+                        WebSession = $webSession
+                        Query      = $queryRetrievePerson
+                        QueryType  = 'query'
+                    }
+
                     $createdPersonAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryRetrievePerson  -QueryType 'query' | Select-Object -First 1
 
                     if ($null -eq $createdPersonAccount) {
@@ -360,9 +432,15 @@ try {
                         $actionList.Remove('CreateEmployee') | Out-Null
                         throw 'Unable to get PersonID of the just created person'
                     }
+                    elseif ($personCount.Count -gt 1) {
+                        # Remove CreateEmployee action from the list, because multiple person objects are found.
+                        $actionList.Remove('CreateEmployee') | Out-Null
+                        throw "Multiple Persons found with [$($actionContext.Data.Person.Name)' AND FIRSTNAME = '$($actionContext.Data.Person.FirstName)], Please correct this so the Persons are unique."
+                    }
                     $outputContext.Data.Person = $createdPersonAccount
                     $outputContext.AccountReference = $createdPersonAccount.PERSONID
-                } else {
+                }
+                else {
                     Write-Information '[DryRun] Create and correlate IProtect Person account, will be executed during enforcement'
                     Write-Information "Query to Create Person '$($queryCreatePerson)'"
                 }
@@ -377,17 +455,20 @@ try {
                 Write-Information 'Creating Employee account'
                 # Create Employee
                 $queryProperties = @()
-                switch ($actionContext.Data.Employee) {
-                    { -not [string]::IsNullOrEmpty($_.BirthDate) } { $queryProperties += "#$($actionContext.Data.Employee.BirthDate)#" }
-                    { -not [string]::IsNullOrEmpty($_.Language) } { $queryProperties += "$($actionContext.Data.Employee.Language)" }
-                    { -not [string]::IsNullOrEmpty($_.SalaryNR) } { $queryProperties += "'$($actionContext.Data.Employee.SalaryNR)'" }
-                    { -not [string]::IsNullOrEmpty($_.HireDate) } { $queryProperties += "#$($actionContext.Data.Employee.HireDate)#" }
-                    { -not [string]::IsNullOrEmpty($_.TerminationDate) } { $queryProperties += "#$($actionContext.Data.Employee.TerminationDate)#" }
+                foreach ($prop in $actionContext.Data.Employee.PSObject.Properties) {
+                    $queryProperties += switch ($prop.Name ) {
+                        'BIRTHDATE' { "$( if (-not ([string]::IsNullOrEmpty($prop.value))) { "#$($prop.value)#" } else{ 'NULL' } )" ; break }
+                        'LANGUAGE' { "$($prop.value)" ; break }
+                        'SALARYNR' { "'$($prop.value)'" ; break }
+                        'HIREDATE' { "$( if (-not ([string]::IsNullOrEmpty($prop.value))) { "#$($prop.value)#" } else{ 'NULL' } )" ; break }
+                        'TERMINATIONDATE' { "$( if (-not ([string]::IsNullOrEmpty($prop.value))) { "#$($prop.value)#" } else{ 'NULL' } )" ; break }
+                    }
                 }
-                $columnsCreateEmployee = $(($actionContext.Data.Employee |Select-Object * -ExcludeProperty employeeId).PSObject.Properties.Name -join ', ')
+
+                $columnsCreateEmployee = $(($actionContext.Data.Employee | Select-Object * -ExcludeProperty employeeId).PSObject.Properties.Name -join ', ')
                 $queryCreateEmployee = "
-                INSERT INTO Employee ($columnsCreateEmployee)
-                VALUES ($($queryProperties -join ', '))"
+                INSERT INTO Employee (PERSONID, $columnsCreateEmployee)
+                VALUES ($($outputContext.AccountReference), $($queryProperties -join ', '))"
 
                 $queryRetrieveEmployee = "
                 SELECT
@@ -397,13 +478,29 @@ try {
 
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Creating and correlating IProtect employee account with [$($correlationField) - $($correlationValue)]"
-                    $null = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryCreateEmployee -QueryType 'update'
+
+                    $splatCreateEmployee = @{
+                        JSessionID = $jSessionID
+                        WebSession = $webSession
+                        Query      = $queryCreateEmployee
+                        QueryType  = 'update'
+                    }
+
+                    $null = Invoke-IProtectQuery @splatCreateEmployee
+
+                    $splatGetCreatedEmployee = @{
+                        JSessionID = $jSessionID
+                        WebSession = $webSession
+                        Query      = $queryRetrieveEmployee
+                        QueryType  = 'Query'
+                    }
 
                     # Get Created account
-                    $createdEmployeeAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryRetrieveEmployee  -QueryType 'Query'
-                } else {
+                    $createdEmployeeAccount = Invoke-IProtectQuery @splatGetCreatedEmployee
+                }
+                else {
                     Write-Information '[DryRun] Create and correlate IProtect Employee account, will be executed during enforcement'
-                    Write-Information "Query to Create Employee '$($query)'"
+                    Write-Information "Query to Create Employee '$($queryCreateEmployee)'"
                 }
 
                 $outputContext.Data.employee = $createdEmployeeAccount
@@ -413,7 +510,7 @@ try {
                     $outputContext.Data.Person = $personObject
                 }
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Create Employee Account was successful. AccountReference is: [$($outputContext.AccountReference)]"
+                        Message = "Create Employee account was successful. AccountReference is: [$($outputContext.AccountReference)]"
                         IsError = $false
                     })
                 break
@@ -423,7 +520,7 @@ try {
                 Write-Information 'Correlating IProtect account'
                 $outputContext.Data.Employee = $employeeObject
                 $outputContext.Data.Person = $personObject
-                $outputContext.AccountReference = $personObject.PersonId
+                $outputContext.AccountReference = $personObject.PERSONID
                 $outputContext.AccountCorrelated = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Action  = 'CorrelateAccount'
@@ -445,26 +542,29 @@ try {
             'MultiplePersonFound' {
                 Write-Information 'Multiple Persons found!'
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Multiple Persons found with [NAME = $($personAccount.Name)] AND [FIRSTNAME = $($personAccount.FirstName)], Please correct this so the Persons are unique."
+                        Message = "Multiple Persons found with [NAME = $($actionContext.Data.Person.Name)] AND [FIRSTNAME = $($actionContext.Data.Person.FirstName)], Please correct this so the Persons are unique."
                         IsError = $true
                     })
                 break
-            }
+            }               
         }
     }
 
     if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
         $outputContext.Success = $true
     }
-} catch {
+}
+catch {
     $outputContext.success = $false
     $ex = $PSItem
+
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
         $auditMessage = "Could not create or correlate IProtect account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not create or correlate IProtect account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
@@ -472,8 +572,13 @@ try {
             Message = $auditMessage
             IsError = $true
         })
-} finally {
+}
+finally {
     if ($null -ne $WebSession) {
-        $null = Invoke-logout
+        $splatLogout = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+        }
+        $null = Invoke-logout @splatLogout
     }
 }

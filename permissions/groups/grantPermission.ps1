@@ -23,7 +23,8 @@ function Resolve-IProtectError {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -36,7 +37,8 @@ function Resolve-IProtectError {
             # Make sure to inspect the error result object and add only the error message as a FriendlyMessage.
             # $httpErrorObj.FriendlyMessage = $errorDetailsObject.message
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails # Temporarily assignment
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -71,7 +73,8 @@ function Get-JSessionID {
             }
         }
         Write-Output $WebSession, $jSessionId
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -87,6 +90,7 @@ function Confirm-AuthenticationResult {
         $WebSession
     )
     Write-Information 'Authenticate with the IProtect'
+    $encodedPassword = [System.Web.HttpUtility]::UrlEncode($actionContext.Configuration.Password)
     $splatParams = @{
         Uri                = "$($actionContext.Configuration.BaseUrl)/j_security_check"
         Method             = 'POST'
@@ -96,15 +100,19 @@ function Confirm-AuthenticationResult {
         }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        Body               = "&j_username=$($actionContext.Configuration.UserName)&j_password=$($actionContext.Configuration.Password)"
+        Body               = "&j_username=$($actionContext.Configuration.UserName)&j_password=$encodedPassword"
         WebSession         = $WebSession
     }
     try {
         $authenticationResult = Invoke-WebRequest @splatParams -ErrorAction SilentlyContinue
+        if ($authenticationResult.Headers.Location -like '*Webcontrols/login_error.html') {
+            throw 'Authentication failed with error [Invalid username and/or password or not licensed]'
+        }
         if (-Not ($authenticationResult.StatusCode -eq 302)) {
             throw "Authentication failed with error [$($authenticationResult.StatusCode)]"
         }
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -153,7 +161,7 @@ function Invoke-IProtectQuery {
         }
         UseBasicParsing    = $true
         MaximumRedirection = 0
-        ContentType        = 'text/xml;charset=ISO-8859-1'
+        ContentType        = 'text/xml;charset=UTF-8'
         Body               = $queryBody
         WebSession         = $WebSession
     }
@@ -162,26 +170,46 @@ function Invoke-IProtectQuery {
         $queryResult = Invoke-WebRequest @splatParams -Verbose:$false
         switch ($queryType) {
             'query' {
-                [xml] $xmlResult = $queryResult.Content
-                $resultNode = $xmlResult.item('RESULT')
-                $rowSetNode = $resultNode.SelectSingleNode( 'ROWSET')
-                $errorNode = $resultNode.SelectSingleNode('ERROR')
-
-                if ($null -ne $errorNode) {
-                    throw $errorNode.DESCRIPTION
-                }
-
-                if ($null -ne $rowSetNode) {
-                    $rowNodes = $rowSetNode.SelectNodes('ROW')
-                    if ((-not ($null -eq $rowNodes) -and ($rowNodes.Count -gt 0))) {
-                        Write-Output $rowNodes
-                    } else {
-                        Write-Output $null
+                if ($queryResult.Content -ne $null) {
+                    if ($queryResult.Content -is [byte[]]) {
+                        $contentString = [System.Text.Encoding]::UTF8.GetString($queryResult.Content)
+                    }
+                    else {
+                        $contentString = $queryResult.Content
+                    }
+                    [xml]$xmlResult = $contentString
+                    $resultNode = $xmlResult.RESULT
+                    $errorNode = $resultNode.SelectSingleNode('ERROR')
+                    if ($null -ne $errorNode) {
+                        $errorDescription = $errorNode.DESCRIPTION
+                        if ($null -ne $errorDescription) {
+                            throw $errorDescription
+                        }
+                        else {
+                            throw "An error occurred but no description was found."
+                        }
+                    }
+                    $rowSetNode = $resultNode.SelectSingleNode('ROWSET')
+                    if ($null -ne $rowSetNode) {
+                        $rowNodes = $rowSetNode.SelectNodes('ROW')
+                        if ($rowNodes.Count -gt 0) {
+                            foreach ($row in $rowNodes) {
+                                $rowData = @{}
+                                foreach ($childNode in $row.ChildNodes) {
+                                    $rowData[$childNode.Name] = $childNode.InnerText
+                                }
+                                $rowDataObject = [PSCustomObject]$rowData
+                                Write-Output $rowDataObject
+                            }
+                        }
+                        else {
+                            Write-Output $null
+                        }
                     }
                 }
             }
             'update' {
-                [xml] $xmlResult = $queryResult.Content
+                [xml] $xmlResult = $queryResult
                 $resultNode = $xmlResult.item('RESULT')
                 $errorNode = $resultNode.SelectSingleNode('ERROR')
                 if ($null -ne $errorNode) {
@@ -190,7 +218,8 @@ function Invoke-IProtectQuery {
                 Write-Output $resultNode
             }
         }
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -199,8 +228,13 @@ function Invoke-Logout {
     [CmdletBinding()]
     param (
         [Parameter()]
+        [string]
+        $JSessionID,
+        
+        [Parameter()]
         $WebSession
     )
+
     $headers = @{
         'Accept' = 'text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2'
         'Cookie' = $JSessionID
@@ -216,8 +250,9 @@ function Invoke-Logout {
         WebSession      = $WebSession
     }
     try {
-        Invoke-WebRequest @splatWebRequestParameters -Verbose:$false -ErrorAction SilentlyContinue
-    } catch {
+        $null = Invoke-WebRequest @splatWebRequestParameters -Verbose:$false -ErrorAction SilentlyContinue
+    }
+    catch {
         # Logout failure is not critical, so only log"
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "Warning, IProtect logout failed error: $($_)"
@@ -254,14 +289,22 @@ try {
     LEFT OUTER JOIN employee AS TABLEEMPLOYEE
         ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
     WHERE
-        TABLEPERSON.personID = '$($actionContext.References.Account)'"
+        TABLEPERSON.personID = $($actionContext.References.Account)"
+        
+    $splatGetUser = @{
+        JSessionID = $jSessionID
+        WebSession = $webSession
+        Query      = $queryGetPerson
+        QueryType  = 'query'
+    }
 
-    $correlatedAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetPerson -QueryType 'query'
+    $correlatedAccount = Invoke-IProtectQuery @splatGetUser
 
     if ($null -ne $correlatedAccount) {
         Write-Information "Getting linked  accessKey Cards of employee [$($actionContext.References.Account)]"F
         $queryGetAccessKeys = "SELECT
             accesskeyid,
+            rcn,
             personid,
             valid,
             startdate,
@@ -271,19 +314,27 @@ try {
             accesskey
         WHERE
             personid = $($actionContext.References.Account)"
-        $accessKeyList = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryGetAccessKeys -QueryType 'query'
+
+        $splatGetAccessKeys = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Query      = $queryGetAccessKeys
+            QueryType  = 'query'
+        }
+
+        $accessKeyList = Invoke-IProtectQuery @splatGetAccessKeys
     }
 
-
-    if ($null -ne $correlatedAccount -and $accessKeyList.count -gt 0) {
+    $accessKeyCount = ($accessKeyList | Measure-Object).Count
+    if ($null -ne $correlatedAccount -and $accessKeyCount -gt 0) {
         $action = 'GrantPermission'
-    } elseif ($null -ne $correlatedAccount) {
+    }
+    elseif ($null -ne $correlatedAccount) {
         $action = 'NoAccessKeysFound'
-    } else {
+    }
+    else {
         $action = 'NotFound'
     }
-
-
 
     # Process
     switch ($action) {
@@ -297,19 +348,28 @@ try {
                 "
 
                 if (-not($actionContext.DryRun -eq $true)) {
-                    Write-Information "Granting IProtect permission: [$($actionContext.References.Permission.DisplayName)] to AccessKey [$($accessKey.AccessKeyId)]"
+                    Write-Information "Granting IProtect permission: [$($actionContext.PermissionDisplayName)] [$($actionContext.References.Permission.Reference)] to AccessKey [$($accessKey.AccessKeyId)] RCN: [$($accessKey.RCN)]"
                     try {
-                        $null = Invoke-IProtectQuery -JSessionID $jSessionID -Query $insertQuery -QueryType 'update'
-                    } catch {
-                        if (-not $_.Exception.Message.contains('already exists')) {
+                        $splatInsertAccessKeys = @{
+                            JSessionID = $jSessionID
+                            WebSession = $webSession
+                            Query      = $insertQuery
+                            QueryType  = 'update'
+                        }
+                        $null = Invoke-IProtectQuery @splatInsertAccessKeys
+                    }
+                    catch {
+                        if ((-not $_.Exception.Message.contains('already exists')) -and (-not $_.Exception.Message.contains('Kolom waarde is niet uniek'))) {
+                            # [error="-402"] or [PACS = #error -600#] could also be a solution
                             throw $_
                         }
                     }
-                } else {
-                    Write-Information "[DryRun] Grant IProtect permission: [$($actionContext.References.Permission.DisplayName)] to AccessKey [$($accessKey.AccessKeyId)], will be executed during enforcement"
+                }
+                else {
+                    Write-Information "[DryRun] Grant IProtect permission: [$($actionContext.References.Permission.Reference)] to AccessKey [$($accessKey.AccessKeyId)] RCN: [$($accessKey.RCN)], will be executed during enforcement"
                 }
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Grant permission [$($actionContext.References.Permission.DisplayName)] to AccessKey [$($accessKey.AccessKeyId)] was successful"
+                        Message = "Grant permission [$($actionContext.PermissionDisplayName)] [$($actionContext.References.Permission.Reference)] to AccessKey [$($accessKey.AccessKeyId)] RCN: [$($accessKey.RCN)] was successful"
                         IsError = $false
                     })
 
@@ -318,7 +378,7 @@ try {
                 }
                 $outputContext.SubPermissions.Add(
                     [PSCustomObject]@{
-                        DisplayName = "AccessKey: $($accessKey.AccessKeyId)"
+                        DisplayName = "AccessKey RCN: $($accessKey.RCN)"
                         Reference   = [PSCustomObject]@{
                             PermissionId = $($actionContext.References.Permission.reference)
                             AccessKeyID  = $accessKey.AccessKeyId
@@ -335,10 +395,10 @@ try {
         }
 
         'NoAccessKeysFound' {
-            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot grant permission [$($actionContext.References.Permission.DisplayName)]"
+            Write-Information "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot grant permission [$($actionContext.PermissionDisplayName)] [$($actionContext.References.Permission.Reference)]"
             $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot grant permission [$($actionContext.References.Permission.DisplayName)]"
+                    Message = "IProtect account: [$($actionContext.References.Account)] has no linked AccessKeys. Cannot grant permission [$($actionContext.PermissionDisplayName)] [$($actionContext.References.Permission.Reference)]"
                     IsError = $true
                 })
             break
@@ -355,7 +415,8 @@ try {
             break
         }
     }
-} catch {
+}
+catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -363,7 +424,8 @@ try {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
         $auditMessage = "Could not grant IProtect permission. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not grant IProtect permission. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
@@ -371,8 +433,13 @@ try {
             Message = $auditMessage
             IsError = $true
         })
-} finally {
+}
+finally {
     if ($null -ne $WebSession) {
-        $null = Invoke-logout
+        $splatLogout = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+        }
+        $null = Invoke-logout @splatLogout
     }
 }

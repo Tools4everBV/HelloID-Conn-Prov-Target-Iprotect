@@ -3,17 +3,11 @@
 > [!IMPORTANT]
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
-| :warning: Warning  - **Complex connector**                                                                                                                                      |
-| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Note that this is a complex connector. Please contact your local Tools4ever sales representative for further information and details about the implementation of this connector |
-
-| :warning: Warning - **Work in progress**                                                                        |
-| :-------------------------------------------------------------------------------------------------------------- |
-| Note that this connector is "a work in progress" and therefore not ready to use in your production environment. |
-
+> [!WARNING]
+> Note that this is a complex connector. Please contact your local Tools4ever sales representative for further information and details about the implementation of this connector
 
 <p align="center">
-  <img src="https://www.tools4ever.nl/connector-logos/iprotect-logo.png" width="500">
+  <img src="https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-Iprotect/blob/main/Logo.png?raw=true">
 </p>
 
 ## Table of contents
@@ -37,7 +31,7 @@
     - [Permission Grants and Revokes on AccessKeys](#permission-grants-and-revokes-on-accesskeys)
     - [SQL Queries](#sql-queries)
     - [Reboarding](#reboarding)
-  - [Development resources](#development-resources)
+  - [Development Resources](#development-resources)
     - [API endpoints](#api-endpoints)
     - [API documentation](#api-documentation)
   - [Getting help](#getting-help)
@@ -46,6 +40,15 @@
 ## Introduction
 
 _HelloID-Conn-Prov-Target-IProtect_ is a _target_ connector. _IProtect_ provides a set of REST API's that allow you to programmatically interact with its data.
+
+Supported features:
+| Feature                             | Supported | Actions                                 | Remarks |
+| ----------------------------------- | --------- | --------------------------------------- | ------- |
+| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete |         |
+| **Permissions**                     | ✅         | Retrieve, Grant, Revoke                 |         |
+| **Resources**                       | ✅         | -                                       |         |
+| **Entitlement Import: Accounts**    | ✅         | -                                       |         |
+| **Entitlement Import: Permissions** | ❌         | -                                       |         |
 
 ## Getting started
 
@@ -64,7 +67,6 @@ Concurrent sessions in HelloID should be set to a **maximum of 1**! This is beca
 
 - **SubPermissions**:<br>
 - Enable SubPermission to be able to see to which accessKeys the permissions are granted.
-
 
 ### Connection settings
 
@@ -98,11 +100,11 @@ The following lifecycle actions are available:
 | Action                                  | Description                                                                                  |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
 | create.ps1                              | Creates a new person and employee account.                                                   |
-| delete.ps1                              | Removes an existing person and employee account, and removes the link of linked AccessKeys. |
+| delete.ps1                              | Removes an existing person and employee account, and removes the link of linked AccessKeys.  |
 | disable.ps1                             | Disables an account, by disabling the linked AccessKeys. Sets the "VALID" property to false. |
 | enable.ps1                              | Enables an account, by enabling the linked AccessKeys. Sets the "VALID" property to true.    |
-| update.ps1                              | Updates the attributes of a person and employee account.                                    |
-| UniquenessCheck.ps1                     | Validate if the person combination `FirstName` and (last)`Name` is unique                       |
+| update.ps1                              | Updates the attributes of a person and employee account.                                     |
+| import.ps1                              | Imports the account and linked AccessKeys.                                                   |
 | permissions/groups/grantPermission.ps1  | Grants specific KeyGroup permissions to each Accesskey linked to the account.                |
 | permissions/groups/revokePermission.ps1 | Revokes specific KeyGroup permissions from each Accesskey linked to the account.             |
 | permissions/groups/permissions.ps1      | Retrieves all available keyGroups permissions.                                               |
