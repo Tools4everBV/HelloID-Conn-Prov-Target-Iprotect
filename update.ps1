@@ -324,15 +324,15 @@ try {
             }
         }
 
-        If ('' -ne $employeeObject.HIREDATE ) {
+        if (-not [string]::IsNullOrEmpty($employeeObject.HIREDATE)) {
             $employeeObject.HIREDATE = ($employeeObject.HIREDATE | Get-Date).ToString("yyyy-MM-dd")
         }
 
-        If ('' -ne $employeeObject.BIRTHDATE ) {
+        if (-not [string]::IsNullOrEmpty($employeeObject.BIRTHDATE)) {
             $employeeObject.BIRTHDATE = ($employeeObject.BIRTHDATE | Get-Date).ToString("yyyy-MM-dd")
         }
 
-        If ('' -ne $employeeObject.TERMINATIONDATE) {
+        if (-not [string]::IsNullOrEmpty($employeeObject.TERMINATIONDATE)) {
             $employeeObject.TERMINATIONDATE = ($employeeObject.TERMINATIONDATE | Get-Date).ToString("yyyy-MM-dd")
         }
 

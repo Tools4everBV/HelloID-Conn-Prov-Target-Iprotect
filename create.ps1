@@ -400,9 +400,23 @@ try {
                 VALUES ($($queryProperties -join ', '))"
 
                 $queryRetrievePerson = "
-                    SELECT  $($actionContext.Data.Person.PSObject.Properties.Name -Join ',')
-                    FROM PERSON
-                    WHERE NAME = '$($actionContext.Data.Person.Name)' AND FIRSTNAME = '$($actionContext.Data.Person.FirstName)'"
+                    SELECT
+                    TABLEPERSON.PERSONID AS person_personId,
+                    TABLEPERSON.NAME AS person_Name,
+                    TABLEPERSON.FirstName AS person_FirstName,
+                    TABLEPERSON.Prefix AS person_Prefix,
+                    TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
+                    TABLEEMPLOYEE.Language AS employee_Language,
+                    TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
+                    TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
+                    TABLEEMPLOYEE.HireDate AS employee_HireDate,
+                    TABLEEMPLOYEE.TerminationDate AS employee_TerminationDate
+                    FROM person TABLEPERSON
+                        LEFT OUTER JOIN employee TABLEEMPLOYEE ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
+                    WHERE
+                        TABLEPERSON.NAME = '$($actionContext.Data.Person.Name)'
+                        AND TABLEPERSON.FIRSTNAME = '$($actionContext.Data.Person.FirstName)'
+                    "
 
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Creating and correlating IProtect Person account with NAME =  $($actionContext.Data.Name) , FIRSTNAME = $($actionContext.Data.Name)"
@@ -424,8 +438,8 @@ try {
                         Query      = $queryRetrievePerson
                         QueryType  = 'query'
                     }
-
-                    $createdPersonAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryRetrievePerson  -QueryType 'query' | Select-Object -First 1
+                    $createdPersonObject = Invoke-IProtectQuery @splatGetCreatedUser
+                    $createdPersonAccount = $createdPersonObject | Where-Object { $_.EMPLOYEE_EMPLOYEEID -eq "" } 
                     $createdPersonCount = ($createdPersonAccount | Measure-Object).Count
 
                     if ($null -eq $createdPersonAccount) {
@@ -530,7 +544,7 @@ try {
             'MultipleEmployeeFound' {
                 Write-Information 'Multiple Employees found!'
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Multiple Employees found on field: [$($correlationField)] with value: [$($correlationValue)], Please correct this so the employees are unique."
+                        Message = "Multiple Employees found on field: [$($correlationField)] with value: [$($correlationValue)]. Please correct this so the employees are unique."
                         IsError = $true
                     })
                 break
@@ -539,7 +553,7 @@ try {
             'MultiplePersonFound' {
                 Write-Information 'Multiple Persons found!'
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = "Multiple Persons found with [NAME = $($actionContext.Data.Person.Name)] AND [FIRSTNAME = $($actionContext.Data.Person.FirstName)], Please correct this so the Persons are unique."
+                        Message = "Multiple Persons found without a linked Employee on fields [NAME = $($actionContext.Data.Person.Name)] AND [FIRSTNAME = $($actionContext.Data.Person.FirstName)]. Please correct this so the Persons are unique."
                         IsError = $true
                     })
                 break

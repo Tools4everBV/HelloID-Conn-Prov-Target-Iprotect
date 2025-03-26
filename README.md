@@ -25,7 +25,6 @@
     - [AccessKeys Not Managed](#accesskeys-not-managed)
     - [Employee and Person Account](#employee-and-person-account)
     - [Correlation on FirstName and (Last) Name](#correlation-on-firstname-and-last-name)
-    - [Uniqueness Check for Person Object (FirstName and (Last) Name)](#uniqueness-check-for-person-object-firstname-and-last-name)
     - [Enable and Disable Linked AccessKey](#enable-and-disable-linked-accesskey)
     - [Delete Account with Removed Linked AccessKeys](#delete-account-with-removed-linked-accesskeys)
     - [Permission Grants and Revokes on AccessKeys](#permission-grants-and-revokes-on-accesskeys)
@@ -125,10 +124,7 @@ The field mapping can be imported by using the _fieldMapping.json_ file.
 Although this connector manages Employees, we cannot ignore the Person object. This is a separate object within IProtect. An Employee object cannot exist without a Person object; however, the reverse is possible. The field mapping is divided into Person and Employee properties, with the connector code handling the rest.
 
 ### Correlation on FirstName and (Last) Name
-During correlation, the connector correlates based on the Employee.SalaryNR using a combined query to retrieve both the Person and Employee objects at once. Once this query returns a positive result, the account will be correlated. If no Employee is found, a separate query is performed to retrieve only the Person object based on `FirstName` and (Last) `Name` to avoid errors and duplicate accounts, and correlates the person account when one is found.
-
-### Uniqueness Check for Person Object (FirstName and (Last) Name)
-The uniqueness check ensures that the Person object is unique within the IProtect environment. The script validates the `personTable` for `FirstName` and (Last)`Name`. If an account is found, it checks whether an Employee account is linked. Only if an employee account is also found does the uniqueness check determine that the person object is **NOT** unique. If there is only a Person account without a linked Employee account, that Person account will be correlated.
+During correlation, the connector correlates based on the Employee.SalaryNR using a combined query to retrieve both the Person and Employee objects at once. Once this query returns a positive result, the account will be correlated. If no Employee is found, a separate query is performed to retrieve only the Person object based on `FirstName` and (Last) `Name` to avoid errors and duplicate accounts, and correlates the person account when one is found without a linked Employee.
 
 ### Enable and Disable Linked AccessKey
 - The Enable and Disable scripts grant and revoke the AccessKey linked to a user account in IProtect, but not the account itself. An Account object does not have an active property.
