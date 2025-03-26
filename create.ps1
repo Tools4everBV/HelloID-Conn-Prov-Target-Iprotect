@@ -401,16 +401,12 @@ try {
 
                 $queryRetrievePerson = "
                     SELECT
-                    TABLEPERSON.PERSONID AS person_personId,
-                    TABLEPERSON.NAME AS person_Name,
-                    TABLEPERSON.FirstName AS person_FirstName,
-                    TABLEPERSON.Prefix AS person_Prefix,
-                    TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
-                    TABLEEMPLOYEE.Language AS employee_Language,
+                    TABLEPERSON.PERSONID AS personId,
+                    TABLEPERSON.NAME AS Name,
+                    TABLEPERSON.FirstName AS FirstName,
+                    TABLEPERSON.Prefix AS Prefix,
                     TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
                     TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
-                    TABLEEMPLOYEE.HireDate AS employee_HireDate,
-                    TABLEEMPLOYEE.TerminationDate AS employee_TerminationDate
                     FROM person TABLEPERSON
                         LEFT OUTER JOIN employee TABLEEMPLOYEE ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
                     WHERE
