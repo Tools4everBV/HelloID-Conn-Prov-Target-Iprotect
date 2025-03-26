@@ -426,15 +426,12 @@ try {
                     }
 
                     $createdPersonAccount = Invoke-IProtectQuery -JSessionID $jSessionID -WebSession $webSession -Query $queryRetrievePerson  -QueryType 'query' | Select-Object -First 1
+                    $createdPersonCount = ($createdPersonAccount | Measure-Object).Count
 
                     if ($null -eq $createdPersonAccount) {
-                        # Remove CreateEmployee action from the list, because the person object is required for the employee creation.
-                        $actionList.Remove('CreateEmployee') | Out-Null
                         throw 'Unable to get PersonID of the just created person'
                     }
-                    elseif ($personCount.Count -gt 1) {
-                        # Remove CreateEmployee action from the list, because multiple person objects are found.
-                        $actionList.Remove('CreateEmployee') | Out-Null
+                    elseif ($createdPersonCount.Count -gt 1) {
                         throw "Multiple Persons found with [$($actionContext.Data.Person.Name)' AND FIRSTNAME = '$($actionContext.Data.Person.FirstName)], Please correct this so the Persons are unique."
                     }
                     $outputContext.Data.Person = $createdPersonAccount
