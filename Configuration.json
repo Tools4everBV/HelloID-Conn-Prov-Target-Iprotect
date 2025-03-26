@@ -23,7 +23,7 @@
   {
     "key": "BaseUrl",
     "type": "input",
-    "defaultValue": "",
+    "defaultValue": "https://<url>/Webcontrols",
     "templateOptions": {
       "label": "BaseUrl",
       "description": "The URL to the API.",

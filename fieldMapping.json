@@ -2,7 +2,7 @@
   "Version": "v1",
   "MappingFields": [
     {
-      "Name": "Employee.BirthDate",
+      "Name": "Person.PersonId",
       "Description": "",
       "Type": "Text",
       "MappingActions": [
@@ -11,8 +11,25 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Field",
-          "Value": "\"Person.Details.BirthDate\"",
+          "MappingMode": "None",
+          "Value": "null",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Employee.Language",
+      "Description": "1 = EN\n2 = NL",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"2\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -28,15 +45,15 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Fixed",
-          "Value": "\"Person.PrimaryContract.StartDate\"",
+          "MappingMode": "Complex",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getHireDate(){\\r\\n    let inputDate = Person.PrimaryContract.StartDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetHireDate();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
       ]
     },
     {
-      "Name": "Employee.Language",
+      "Name": "Employee.BirthDate",
       "Description": "",
       "Type": "Text",
       "MappingActions": [
@@ -45,8 +62,42 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Fixed",
-          "Value": "\"1\"",
+          "MappingMode": "Complex",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '/' + month + '/' + day + ' 00:00:00';\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Employee.TerminationDate",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '/' + month + '/' + day + ' 00:00:00';\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.Prefix",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getPrefixes() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let nameFormatted = '';\\r\\n    let prefix = '';\\r\\n\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n        case \\\"PB\\\":\\r\\n            nameFormatted = middleNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        case \\\"BP\\\":\\r\\n        default:\\r\\n            nameFormatted = middleName;\\r\\n            break;\\r\\n    }\\r\\n\\r\\n    if (typeof nameFormatted !== 'undefined' && nameFormatted) {\\r\\n        prefix = nameFormatted.trim();\\r\\n    } else {\\r\\n        prefix = null;\\r\\n    }\\r\\n\\r\\n    return prefix;\\r\\n}\\r\\n\\r\\ngetPrefixes();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -63,75 +114,7 @@
             "Update"
           ],
           "MappingMode": "Field",
-          "Value": "\"Person.Name.GivenName\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Employee.SalaryNR",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Field",
-          "Value": "\"Person.ExternalId\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Employee.TerminationDate",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"Person.PrimaryContract.EndDate\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Person.Name",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"// generateSurnameOption1.js [https://github.com/Tools4everBV/HelloID-Lib-Prov-HelperFunctions/blob/master/Javascript/Target/Surname_Lastname/Scripts/generateSurnameOption1.js]\\r\\n//\\r\\n// Mapping logic to generate the Surname according to the following convention.\\r\\n// B\\tvan den Boele\\r\\n// BP\\tvan den Boele – de Vries\\r\\n// P\\tde Vries\\r\\n// PB   de Vries – van den Boele\\r\\nfunction generateSurname() {\\r\\n    let nickName = Person.Name.NickName;\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let surName = '';\\r\\n    switch (convention) {\\r\\n        case \\\"BP\\\":\\r\\n            if (typeof middleName !== 'undefined' && middleName) { surName = surName + middleName + ' ' }\\r\\n            surName = surName + lastName;\\r\\n\\r\\n            surName = surName + ' - ';\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) { surName = surName + middleNamePartner + ' ' }\\r\\n            surName = surName + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"PB\\\":\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) { surName = surName + middleNamePartner + ' ' }\\r\\n            surName = surName + lastNamePartner;\\r\\n\\r\\n            surName = surName + ' - ';\\r\\n            if (typeof middleName !== 'undefined' && middleName) { surName = surName + middleName + ' ' }\\r\\n            surName = surName + lastName;\\r\\n            break;\\r\\n        case \\\"P\\\":\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) { surName = surName + middleNamePartner + ' ' }\\r\\n            surName = surName + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            if (typeof middleName !== 'undefined' && middleName) { surName = surName + middleName + ' ' }\\r\\n            surName = surName + lastName;\\r\\n            break;\\r\\n    }\\r\\n    // Trim spaces at start and end\\r\\n    surName = surName.trim();\\r\\n\\r\\n    // Shorten string to maxAttributeLength \\r\\n    const maxAttributeLength = 64;\\r\\n    surName = surName.substring(0, maxAttributeLength);\\r\\n\\r\\n    return surName;\\r\\n}\\r\\n\\r\\ngenerateSurname();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Person.Prefix",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Field",
-          "Value": "\"Person.Name.Initials\"",
+          "Value": "\"Person.Name.NickName\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -148,14 +131,14 @@
             "Update"
           ],
           "MappingMode": "None",
-          "Value": "\"\"",
+          "Value": "null",
           "UsedInNotifications": false,
-          "StoreInAccountData": false
+          "StoreInAccountData": true
         }
       ]
     },
     {
-      "Name": "Person.PersonId",
+      "Name": "Employee.SalaryNR",
       "Description": "",
       "Type": "Text",
       "MappingActions": [
@@ -164,8 +147,25 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "None",
-          "Value": "\"\"",
+          "MappingMode": "Field",
+          "Value": "\"Person.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Person.Name",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"// Please enter the mapping logic to generate the Lastname.\\r\\nfunction getLastName() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let nameFormatted = '';\\r\\n    let sureName = ''\\r\\n\\r\\n    switch (convention) {\\r\\n        case \\\"BP\\\":\\r\\n            nameFormatted = lastName + ' - ';\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) { nameFormatted = nameFormatted + middleNamePartner + ' ' }\\r\\n            nameFormatted = nameFormatted + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"P\\\":\\r\\n            nameFormatted = lastNamePartner;\\r\\n            break;\\r\\n        case \\\"PB\\\":\\r\\n            nameFormatted = lastNamePartner + ' - ';\\r\\n            if (typeof middleName !== 'undefined' && middleName) { nameFormatted = nameFormatted + middleName + ' ' }\\r\\n            nameFormatted = nameFormatted + lastName;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            nameFormatted = lastName;\\r\\n            break;\\r\\n    }\\r\\n\\r\\n    if (typeof nameFormatted !== 'undefined' && nameFormatted) {\\r\\n        sureName = nameFormatted.trim();\\r\\n    } else {\\r\\n        sureName = nameFormatted;\\r\\n    }\\r\\n\\r\\n    return sureName;\\r\\n}\\r\\n\\r\\ngetLastName();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
