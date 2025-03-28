@@ -406,7 +406,7 @@ try {
                     TABLEPERSON.FirstName AS FirstName,
                     TABLEPERSON.Prefix AS Prefix,
                     TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
-                    TABLEEMPLOYEE.SALARYNR AS employee_salaryNr,
+                    TABLEEMPLOYEE.SALARYNR AS employee_salaryNr
                     FROM person TABLEPERSON
                         LEFT OUTER JOIN employee TABLEEMPLOYEE ON TABLEEMPLOYEE.personID = TABLEPERSON.personID
                     WHERE
