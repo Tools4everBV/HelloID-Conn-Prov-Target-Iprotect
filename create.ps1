@@ -260,6 +260,146 @@ function Invoke-Logout {
             })
     }
 }
+
+function Get-IProtectDepartment {
+    param (
+         [Parameter()]
+        [string]
+        $JSessionID,
+
+        [Parameter()]
+        $WebSession,
+
+        [ValidateNotNullOrEmpty()]
+        [Object]
+        [ref]$Account
+    )
+
+   
+    # Lookup Value is filled in, lookup value in IProtect
+    $queryGetDepartments = "
+        SELECT
+            TABLEDEPARTMENT.DEPARTMENTID as DEPARTMENTID,
+            TABLEDEPARTMENT.NAME as DEPARTMENTNAME
+        FROM department TABLEDEPARTMENT
+        WHERE TABLEDEPARTMENT.NAME = '$($Account.DepartmentId)'"
+
+    $splatGetDepartments = @{
+        JSessionID = $jSessionID
+        WebSession = $webSession
+        Query      = $queryGetDepartments
+        QueryType  = 'query'
+    }
+
+    $department = Invoke-IProtectQuery @splatGetDepartments
+    
+    # When department is not found in IProtect
+    if ([string]::IsNullOrEmpty($department.DEPARTMENTID)) {
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "Department [$($Account.DepartmentId)] not found in IProtect."
+                IsError = $true
+            })
+    }
+    else {
+        # Department is found in IProtect, set in IProtect
+        $Account.DepartmentId = $department.DEPARTMENTID
+    }
+}
+
+function Get-IProtectAutorizationGroup {
+    param (
+         [Parameter()]
+        [string]
+        $JSessionID,
+
+        [Parameter()]
+        $WebSession,
+
+        [ValidateNotNullOrEmpty()]
+        [Object]
+        [ref]$Account
+    )
+
+   
+    # Lookup Value is filled in, lookup value in IProtect
+    $queryGetHsGroup = "
+        SELECT
+            TABLEHSGROUP.HSGROUPID as HSGROUPID,
+            TABLEHSGROUP.NAME as HSGROUPNAME
+        FROM hsgroup TABLEHSGROUP
+        WHERE TABLEHSGROUP.NAME = '$($Account.HsId)'"
+
+    $splatGetHsGroup = @{
+        JSessionID = $jSessionID
+        WebSession = $webSession
+        Query      = $queryGetHsGroup
+        QueryType  = 'query'
+    }
+
+    $hsgroup = Invoke-IProtectQuery @splatGetHsGroup
+    
+    # When department is not found in IProtect
+    if ([string]::IsNullOrEmpty($hsgroup.HSGROUPID)) {
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "HsGroup [$($Account.HsId)] not found in IProtect."
+                IsError = $true
+            })
+    }
+    else {
+        # Department is found in IProtect, set in IProtect
+        $Account.HsId = $hsgroup.HSGROUPID
+    }
+}
+
+function Get-IProtectFreeSelectField {
+    param (
+         [Parameter()]
+        [string]
+        $JSessionID,
+
+        [Parameter()]
+        $WebSession,
+
+        [ValidateNotNullOrEmpty()]
+        [Object]
+        [ref]$Account,
+
+        [Parameter()]
+        [string]
+        $Field
+    )
+   
+    # Lookup Value is filled in, lookup value in IProtect    
+    $queryGetCustomFields = "
+        SELECT
+            TABLECUSTOMTEXT.CUSTOMTEXTNR as CUSTOMTEXTNR,
+            TABLECUSTOMTEXT.LAN1TEXT as LAN1TEXT,
+            TABLECUSTOMTEXT.COLUMNNAME as COLUMNNAME
+        FROM customtext TABLECUSTOMTEXT"
+
+    $splatGetCustomFields = @{
+        JSessionID = $jSessionID
+        WebSession = $webSession
+        Query      = $queryGetCustomFields
+        QueryType  = 'query'
+    }
+
+    $customFields = Invoke-IProtectQuery @splatGetCustomFields
+
+    $customField = $customFields | Where-object {$_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field}
+
+    # When custom field is not found in IProtect
+    if ([string]::IsNullOrEmpty($customField.CUSTOMTEXTNR)) {
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "$Field [$($Account.$Field)] not found in IProtect."
+                IsError = $true
+            })
+    }
+    else {
+        # Department is found in IProtect, set in IProtect
+        $Account.$Field = $customField.CustomTextNr
+    }
+}
 #endregion
 
 try {
@@ -352,9 +492,55 @@ try {
             }
             $personObject = Invoke-IProtectQuery @splatGetUser
             $correlatedPersonAccount = $personObject | Where-Object { $_.EMPLOYEE_EMPLOYEEID -eq "" }            
-
         }
     }
+
+    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'DepartmentId') {
+        $splatGetDepartment = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Account    = [ref]$actionContext.Data.Person
+        }
+        Get-IProtectDepartment @splatGetDepartment
+    }
+
+    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'HsId') {
+        $splatGetHsGroup = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Account    = [ref]$actionContext.Data.Person
+        }
+        Get-IProtectAutorizationGroup  @splatGetHsGroup
+    }
+
+    if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'DepartmentId') {
+        $splatGetDepartment = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Account    = [ref]$actionContext.Data.Employee
+        }
+        Get-IProtectDepartment @splatGetDepartment
+    }
+
+    if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'HsId') {
+        $splatGetHsGroup = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Account    = [ref]$actionContext.Data.Employee
+        }
+        Get-IProtectAutorizationGroup  @splatGetHsGroup
+    }
+
+    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'FreeSelect7') {
+        $splatGetFreeSelect7 = @{
+            JSessionID = $jSessionID
+            WebSession = $webSession
+            Account    = [ref]$actionContext.Data.Person
+            Field      = 'FreeSelect7'
+        }
+        Get-IProtectFreeSelectField @splatGetFreeSelect7
+    }
+    
 
     $actionList = [System.Collections.Generic.list[string]]::new()
     $employeeCount = ($correlateEmployeeAccount | Measure-Object).Count
@@ -391,6 +577,10 @@ try {
                         'FIRSTNAME' { "'$($prop.value)'" ; break }
                         'NAME' { "'$($prop.value)'" ; break }
                         'PREFIX' { "'$($prop.value)'" ; break }
+                        'DEPARTMENTID' { "$($prop.value)" ; break }
+                        'HSID' { "$($prop.value)" ; break }
+                        'FREETEXT4' { "'$($prop.value)'" ; break }
+                        'FREESELECT7' { "$($prop.value)" ; break }
                     }
                 }
 
@@ -470,6 +660,7 @@ try {
                         'SALARYNR' { "'$($prop.value)'" ; break }
                         'HIREDATE' { "$( if (-not ([string]::IsNullOrEmpty($prop.value))) { "#$($prop.value)#" } else{ 'NULL' } )" ; break }
                         'TERMINATIONDATE' { "$( if (-not ([string]::IsNullOrEmpty($prop.value))) { "#$($prop.value)#" } else{ 'NULL' } )" ; break }
+                        'HSID' { "$($prop.value)" ; break }
                     }
                 }
 
