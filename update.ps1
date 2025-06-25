@@ -384,6 +384,7 @@ try {
 
                 $updateQueryProperties = @()
                 foreach ($prop in $propertiesPersonChanged) {
+                    $prop.value = $prop.value -replace "'", "`\`'"
                     $updateQueryProperties += switch ($prop.Name ) {
                         'FirstName' { "FirstName = '$($prop.value)'" ; break }
                         'Name' { "Name = '$($prop.value)'" ; break }

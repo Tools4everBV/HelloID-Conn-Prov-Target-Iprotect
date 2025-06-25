@@ -386,6 +386,7 @@ try {
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 $queryProperties = @()
                 foreach ($prop in $actionContext.Data.Person.PSObject.Properties) {
+                    $prop.value = $prop.value -replace "'", "`\`'"
                     $queryProperties += switch ($prop.Name ) {
                         'FIRSTNAME' { "'$($prop.value)'" ; break }
                         'NAME' { "'$($prop.value)'" ; break }
