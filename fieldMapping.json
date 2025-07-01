@@ -63,7 +63,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '/' + month + '/' + day + ' 00:00:00';\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -80,7 +80,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '/' + month + '/' + day + ' 00:00:00';\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -166,6 +166,91 @@
           ],
           "MappingMode": "Complex",
           "Value": "\"// Please enter the mapping logic to generate the Lastname.\\r\\nfunction getLastName() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let lastName = Person.Name.FamilyName;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let lastNamePartner = Person.Name.FamilyNamePartner;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let nameFormatted = '';\\r\\n    let sureName = ''\\r\\n\\r\\n    switch (convention) {\\r\\n        case \\\"BP\\\":\\r\\n            nameFormatted = lastName + ' - ';\\r\\n            if (typeof middleNamePartner !== 'undefined' && middleNamePartner) { nameFormatted = nameFormatted + middleNamePartner + ' ' }\\r\\n            nameFormatted = nameFormatted + lastNamePartner;\\r\\n            break;\\r\\n        case \\\"P\\\":\\r\\n            nameFormatted = lastNamePartner;\\r\\n            break;\\r\\n        case \\\"PB\\\":\\r\\n            nameFormatted = lastNamePartner + ' - ';\\r\\n            if (typeof middleName !== 'undefined' && middleName) { nameFormatted = nameFormatted + middleName + ' ' }\\r\\n            nameFormatted = nameFormatted + lastName;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        default:\\r\\n            nameFormatted = lastName;\\r\\n            break;\\r\\n    }\\r\\n\\r\\n    if (typeof nameFormatted !== 'undefined' && nameFormatted) {\\r\\n        sureName = nameFormatted.trim();\\r\\n    } else {\\r\\n        sureName = nameFormatted;\\r\\n    }\\r\\n\\r\\n    return sureName;\\r\\n}\\r\\n\\r\\ngetLastName();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Employee.HsId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Location.Name\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.HsId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Location.Name\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeText4",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Name.Initials\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.DepartmentId",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Department.DisplayName\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeSelect7",
+      "Description": "",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getFreeSelect7() {\\n    let result = '';\\n    if(typeof Person.PrimaryContract.Location.Name !== 'undefined' && Person.PrimaryContract.Location.Name){\\n        // maximale lengte van het veld blijkt 41 tekens\\n        result = Person.PrimaryContract.Location.Name.substring(0,41);\\n    }\\n\\n    return result;\\n}\\n\\ngetFreeSelect7();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
