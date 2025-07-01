@@ -263,7 +263,7 @@ function Invoke-Logout {
 
 function Get-IProtectDepartment {
     param (
-         [Parameter()]
+        [Parameter()]
         [string]
         $JSessionID,
 
@@ -308,7 +308,7 @@ function Get-IProtectDepartment {
 
 function Get-IProtectAutorizationGroup {
     param (
-         [Parameter()]
+        [Parameter()]
         [string]
         $JSessionID,
 
@@ -353,7 +353,7 @@ function Get-IProtectAutorizationGroup {
 
 function Get-IProtectFreeSelectField {
     param (
-         [Parameter()]
+        [Parameter()]
         [string]
         $JSessionID,
 
@@ -386,7 +386,7 @@ function Get-IProtectFreeSelectField {
 
     $customFields = Invoke-IProtectQuery @splatGetCustomFields
 
-    $customField = $customFields | Where-object {$_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field}
+    $customField = $customFields | Where-object { $_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field }
 
     # When custom field is not found in IProtect
     if ([string]::IsNullOrEmpty($customField.CUSTOMTEXTNR)) {
@@ -573,6 +573,7 @@ try {
                 $queryProperties = @()
                 foreach ($prop in $actionContext.Data.Person.PSObject.Properties) {
                     $prop.value = $prop.value -replace "'", "`\`'"
+                    $prop.value = $prop.value -replace "&", "&amp;"
                     $queryProperties += switch ($prop.Name ) {
                         'FIRSTNAME' { "'$($prop.value)'" ; break }
                         'NAME' { "'$($prop.value)'" ; break }
@@ -596,6 +597,10 @@ try {
                     TABLEPERSON.NAME AS Name,
                     TABLEPERSON.FirstName AS FirstName,
                     TABLEPERSON.Prefix AS Prefix,
+                    TABLEPERSON.DEPARTMENTID AS DEPARTMENTID,
+                    TABLEPERSON.HSID AS HSID,
+                    TABLEPERSON.FREETEXT4 AS FREETEXT4,
+                    TABLEPERSON.FREESELECT7 AS FREESELECT7,
                     TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
                     TABLEEMPLOYEE.SALARYNR AS employee_salaryNr
                     FROM person TABLEPERSON
@@ -606,7 +611,7 @@ try {
                     "
 
                 if (-not($actionContext.DryRun -eq $true)) {
-                    Write-Information "Creating and correlating IProtect Person account with NAME =  $($actionContext.Data.Name) , FIRSTNAME = $($actionContext.Data.Name)"
+                    Write-Information "Creating and correlating IProtect Person account with NAME =  $($actionContext.Data.Person.Name) , FIRSTNAME = $($actionContext.Data.Person.Name)"
 
                     $splatCreateUser = @{
                         JSessionID = $jSessionID

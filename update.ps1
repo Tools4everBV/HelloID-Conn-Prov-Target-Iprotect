@@ -262,7 +262,7 @@ function Invoke-Logout {
 
 function Get-IProtectDepartment {
     param (
-         [Parameter()]
+        [Parameter()]
         [string]
         $JSessionID,
 
@@ -307,7 +307,7 @@ function Get-IProtectDepartment {
 
 function Get-IProtectAutorizationGroup {
     param (
-         [Parameter()]
+        [Parameter()]
         [string]
         $JSessionID,
 
@@ -352,7 +352,7 @@ function Get-IProtectAutorizationGroup {
 
 function Get-IProtectFreeSelectField {
     param (
-         [Parameter()]
+        [Parameter()]
         [string]
         $JSessionID,
 
@@ -385,7 +385,7 @@ function Get-IProtectFreeSelectField {
 
     $customFields = Invoke-IProtectQuery @splatGetCustomFields
 
-    $customField = $customFields | Where-object {$_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field}
+    $customField = $customFields | Where-object { $_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field }
 
     # When custom field is not found in IProtect
     if ([string]::IsNullOrEmpty($customField.CUSTOMTEXTNR)) {
@@ -577,6 +577,7 @@ try {
                 $updateQueryProperties = @()
                 foreach ($prop in $propertiesPersonChanged) {
                     $prop.value = $prop.value -replace "'", "`\`'"
+                    $prop.value = $prop.value -replace "&", "&amp;"
                     $updateQueryProperties += switch ($prop.Name ) {
                         'FirstName' { "FirstName = '$($prop.value)'" ; break }
                         'Name' { "Name = '$($prop.value)'" ; break }

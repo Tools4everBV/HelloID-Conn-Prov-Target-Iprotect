@@ -41,7 +41,7 @@ function Resolve-IProtectError {
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
-        return $httpErrorObj
+        Write-Output $httpErrorObj
     }
 }
 
@@ -72,7 +72,7 @@ function Get-JSessionID {
                 }
             }
         }
-        return $WebSession, $jSessionId
+        Write-Output $WebSession, $jSessionId
     }
     catch {
         $PSCmdlet.ThrowTerminatingError($_)
@@ -192,7 +192,6 @@ function Invoke-IProtectQuery {
                     $rowSetNode = $resultNode.SelectSingleNode('ROWSET')
                     if ($null -ne $rowSetNode) {
                         $rowNodes = $rowSetNode.SelectNodes('ROW')
-                        $allRowDataObjects = @()
                         if ($rowNodes.Count -gt 0) {
                             foreach ($row in $rowNodes) {
                                 $rowData = @{}
@@ -200,13 +199,11 @@ function Invoke-IProtectQuery {
                                     $rowData[$childNode.Name] = $childNode.InnerText
                                 }
                                 $rowDataObject = [PSCustomObject]$rowData
-                                $allRowDataObjects += $rowDataObject  # Collect each row object
+                                Write-Output $rowDataObject
                             }
-                            return $allRowDataObjects 
-                        
                         }
                         else {
-                            return $null
+                            Write-Output $null
                         }
                     }
                 }
@@ -218,7 +215,7 @@ function Invoke-IProtectQuery {
                 if ($null -ne $errorNode) {
                     throw $errorNode.DESCRIPTION
                 }
-                return $resultNode
+                Write-Output $resultNode
             }
         }
     }
@@ -356,11 +353,11 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-IProtectError -ErrorObject $ex
-        $auditMessage = "Could not create or correlate IProtect account. Error: $($errorObj.FriendlyMessage)"
+        $auditMessage = "Could not import IProtect accounts. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditMessage = "Could not create or correlate IProtect account. Error: $($ex.Exception.Message)"
+        $auditMessage = "Could not import IProtect accounts. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
 }

@@ -7,7 +7,7 @@
 > Note that this is a complex connector. Please contact your local Tools4ever sales representative for further information and details about the implementation of this connector
 
 <p align="center">
-  <img src="https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-Iprotect/blob/main/Logo.png?raw=true">
+  <img src="https://raw.githubusercontent.com/Tools4everBV/HelloID-Conn-Prov-Target-Iprotect/refs/heads/main/Logo.png">
 </p>
 
 ## Table of contents
@@ -16,6 +16,7 @@
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Getting started](#getting-started)
+    - [HelloID Icon URL](#helloid-icon-url)
     - [Prerequisites](#prerequisites)
     - [Connection settings](#connection-settings)
     - [Correlation configuration](#correlation-configuration)
@@ -47,9 +48,16 @@ Supported features:
 | **Permissions**                     | ✅         | Retrieve, Grant, Revoke                 |         |
 | **Resources**                       | ✅         | -                                       |         |
 | **Entitlement Import: Accounts**    | ✅         | -                                       |         |
-| **Entitlement Import: Permissions** | ❌         | -                                       |         |
+| **Entitlement Import: Permissions** | ✅         | -                                       |         |
 
 ## Getting started
+
+### HelloID Icon URL
+URL of the icon used for the HelloID Provisioning target system.
+
+```
+https://raw.githubusercontent.com/Tools4everBV/HelloID-Conn-Prov-Target-Iprotect/refs/heads/main/Icon.png
+```
 
 ### Prerequisites
 

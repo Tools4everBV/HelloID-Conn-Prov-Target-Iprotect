@@ -63,7 +63,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '/' + month + '/' + day + ' 00:00:00';\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
@@ -80,7 +80,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '/' + month + '/' + day + ' 00:00:00';\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
