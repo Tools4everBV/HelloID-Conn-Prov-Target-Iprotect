@@ -580,6 +580,12 @@ try {
 
                 $updateQueryProperties = @()
                 foreach ($prop in $propertiesPersonChanged) {
+                    # Check if value is null or empty - if so, use null instead of empty string
+                    if ([string]::IsNullOrEmpty($prop.value)) {
+                        $updateQueryProperties += "$($prop.name) = NULL"
+                        continue
+                    }
+                
                     $prop.value = $prop.value -replace "'", "`\`'"
                     $prop.value = $prop.value -replace "&", "&amp;"
                     $updateQueryProperties += switch ($prop.Name ) {
