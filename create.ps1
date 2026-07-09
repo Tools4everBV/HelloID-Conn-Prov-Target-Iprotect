@@ -275,14 +275,18 @@ function Get-IProtectDepartment {
         [ref]$Account
     )
 
-   
+    # Replace special characters in department name to avoid query issues
+    $departmentName = $Account.DepartmentId
+    $departmentName = $departmentName -replace "'", "`\`'"
+    $departmentName = $departmentName -replace "&", "&amp;"
+
     # Lookup Value is filled in, lookup value in IProtect
     $queryGetDepartments = "
         SELECT
             TABLEDEPARTMENT.DEPARTMENTID as DEPARTMENTID,
             TABLEDEPARTMENT.NAME as DEPARTMENTNAME
         FROM department TABLEDEPARTMENT
-        WHERE TABLEDEPARTMENT.NAME = '$($Account.DepartmentId)'"
+        WHERE TABLEDEPARTMENT.NAME = '$departmentName'"
 
     $splatGetDepartments = @{
         JSessionID = $jSessionID
