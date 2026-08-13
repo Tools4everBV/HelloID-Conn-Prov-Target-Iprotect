@@ -3,7 +3,7 @@
   "MappingFields": [
     {
       "Name": "Person.PersonId",
-      "Description": "",
+      "Description": "[Required]\nUsed as account reference.\nSet to 'None' mapping mode as this value is returned by IProtect after creation.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -19,110 +19,8 @@
       ]
     },
     {
-      "Name": "Employee.Language",
-      "Description": "1 = EN\n2 = NL",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Fixed",
-          "Value": "\"2\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Employee.HireDate",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getHireDate(){\\r\\n    let inputDate = Person.PrimaryContract.StartDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetHireDate();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Employee.BirthDate",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Employee.TerminationDate",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Person.Prefix",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Complex",
-          "Value": "\"function getPrefixes() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let nameFormatted = '';\\r\\n    let prefix = '';\\r\\n\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n        case \\\"PB\\\":\\r\\n            nameFormatted = middleNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        case \\\"BP\\\":\\r\\n        default:\\r\\n            nameFormatted = middleName;\\r\\n            break;\\r\\n    }\\r\\n\\r\\n    if (typeof nameFormatted !== 'undefined' && nameFormatted) {\\r\\n        prefix = nameFormatted.trim();\\r\\n    } else {\\r\\n        prefix = null;\\r\\n    }\\r\\n\\r\\n    return prefix;\\r\\n}\\r\\n\\r\\ngetPrefixes();\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Person.FirstName",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Field",
-          "Value": "\"Person.Name.NickName\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
       "Name": "Employee.employeeId",
-      "Description": "",
+      "Description": "[Required]\nUsed for correlation to employee.\nSet to 'None' mapping mode as this value is returned by IProtect after creation.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -139,7 +37,7 @@
     },
     {
       "Name": "Employee.SalaryNR",
-      "Description": "",
+      "Description": "[Required]\nUsed for correlation to employee.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -156,7 +54,7 @@
     },
     {
       "Name": "Person.Name",
-      "Description": "",
+      "Description": "[Required]\nUsed for correlation to person.\nLast name based on name convention.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -172,8 +70,59 @@
       ]
     },
     {
+      "Name": "Person.FirstName",
+      "Description": "[Required]\nUsed for correlation to person.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.Name.NickName\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.Prefix",
+      "Description": "[Optional]\nName prefix based on name convention.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getPrefixes() {\\r\\n    let middleName = Person.Name.FamilyNamePrefix;\\r\\n    let middleNamePartner = Person.Name.FamilyNamePartnerPrefix;\\r\\n    let convention = Person.Name.Convention;\\r\\n\\r\\n    let nameFormatted = '';\\r\\n    let prefix = '';\\r\\n\\r\\n    switch (convention) {\\r\\n        case \\\"P\\\":\\r\\n        case \\\"PB\\\":\\r\\n            nameFormatted = middleNamePartner;\\r\\n            break;\\r\\n        case \\\"B\\\":\\r\\n        case \\\"BP\\\":\\r\\n        default:\\r\\n            nameFormatted = middleName;\\r\\n            break;\\r\\n    }\\r\\n\\r\\n    if (typeof nameFormatted !== 'undefined' && nameFormatted) {\\r\\n        prefix = nameFormatted.trim();\\r\\n    } else {\\r\\n        prefix = null;\\r\\n    }\\r\\n\\r\\n    return prefix;\\r\\n}\\r\\n\\r\\ngetPrefixes();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.DepartmentId",
+      "Description": "[Optional]\nMap with department name. In the connector script, this will be converted to the IProtect department ID.\nConfigure 'whenDepartmentNotFound' setting to determine behavior when department is not found.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Department.DisplayName\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
       "Name": "Employee.HsId",
-      "Description": "",
+      "Description": "[Optional]\nAuthorization group for Employee.\nMap with authorization group name. In the connector script, this will be converted to the IProtect HsGroup ID.\nConfigure 'whenAuthorizationGroupNotFound' setting to determine behavior when group is not found.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -190,7 +139,7 @@
     },
     {
       "Name": "Person.HsId",
-      "Description": "",
+      "Description": "[Optional]\nAuthorization group for Person.\nMap with authorization group name. In the connector script, this will be converted to the IProtect HsGroup ID.\nConfigure 'whenAuthorizationGroupNotFound' setting to determine behavior when group is not found.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -206,8 +155,110 @@
       ]
     },
     {
+      "Name": "Employee.Language",
+      "Description": "[Optional]\nLanguage preference.\n1 = EN (English)\n2 = NL (Dutch)",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"2\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Employee.HireDate",
+      "Description": "[Optional]\nEmployee hire date.\nFormat: yyyy-MM-dd",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getHireDate(){\\r\\n    let inputDate = Person.PrimaryContract.StartDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetHireDate();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Employee.BirthDate",
+      "Description": "[Optional]\nEmployee birth date.\nFormat: yyyy-MM-dd",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getBirthDate(){\\r\\n    let inputDate = Person.Details.BirthDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetBirthDate();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Employee.TerminationDate",
+      "Description": "[Optional]\nEmployee termination date.\nFormat: yyyy-MM-dd",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function convertDate(date) {\\r\\n    // Get day, month, and year components\\r\\n    const day = date.getDate().toString().padStart(2, '0');\\r\\n    const month = (date.getMonth() + 1).toString().padStart(2, '0');\\r\\n    const year = date.getFullYear();\\r\\n\\r\\n    // Format the date as \\\"dd-mm-yyyy\\\"\\r\\n    return year + '-' + month + '-' + day;\\r\\n}\\r\\n\\r\\nfunction getTerminationDate(){\\r\\n    let inputDate = Person.PrimaryContract.EndDate\\r\\n    let returnDate = inputDate ? convertDate(new Date(inputDate)) : null;\\r\\n\\r\\n    return returnDate;\\r\\n}\\r\\n\\r\\ngetTerminationDate();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeText1",
+      "Description": "[Optional]\nExample: Job title/Function.\nNote: Maximum 40 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getFreeText1() {\\r\\n    let freeText1 = null;\\r\\n\\r\\n    if (Person.PrimaryContract.Title && Person.PrimaryContract.Title.Name) {\\r\\n        freeText1 = Person.PrimaryContract.Title.Name;\\r\\n\\r\\n        // Shorten to 40 chars (this is the max IProtect supports)\\r\\n        freeText1 = freeText1.substring(0, 40);\\r\\n    }\\r\\n\\r\\n    return freeText1;\\r\\n}\\r\\n\\r\\ngetFreeText1();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeText2",
+      "Description": "[Optional]\nExample: Cost center.\nNote: Maximum 40 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getFreeText2() {\\r\\n    let freeText2 = null;\\r\\n\\r\\n    if (\\r\\n        Person.PrimaryContract.CostCenter &&\\r\\n        Person.PrimaryContract.CostCenter.ExternalId &&\\r\\n        Person.PrimaryContract.CostCenter.Name\\r\\n    ) {\\r\\n        freeText2 = Person.PrimaryContract.CostCenter.ExternalId + ' - ' + Person.PrimaryContract.CostCenter.Name;\\r\\n\\r\\n        // Shorten to 40 chars (this is the max IProtect supports)\\r\\n        freeText2 = freeText2.substring(0, 40);\\r\\n    }\\r\\n\\r\\n    return freeText2;\\r\\n}\\r\\n\\r\\ngetFreeText2();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
       "Name": "Person.FreeText4",
-      "Description": "",
+      "Description": "[Optional]\nExample: Initials.\nNote: Maximum 40 characters.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -223,25 +274,8 @@
       ]
     },
     {
-      "Name": "Person.DepartmentId",
-      "Description": "",
-      "Type": "Text",
-      "MappingActions": [
-        {
-          "MapForActions": [
-            "Create",
-            "Update"
-          ],
-          "MappingMode": "Field",
-          "Value": "\"Person.PrimaryContract.Department.DisplayName\"",
-          "UsedInNotifications": false,
-          "StoreInAccountData": false
-        }
-      ]
-    },
-    {
-      "Name": "Person.FreeSelect7",
-      "Description": "",
+      "Name": "Person.FreeText8",
+      "Description": "[Optional]\nExample: Employee number.\nNote: Maximum 40 characters.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -250,7 +284,92 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getFreeSelect7() {\\n    let result = '';\\n    if(typeof Person.PrimaryContract.Location.Name !== 'undefined' && Person.PrimaryContract.Location.Name){\\n        // maximale lengte van het veld blijkt 41 tekens\\n        result = Person.PrimaryContract.Location.Name.substring(0,41);\\n    }\\n\\n    return result;\\n}\\n\\ngetFreeSelect7();\"",
+          "Value": "\"function getFreeText8() {\\r\\n    let freeText8 = null;\\r\\n\\r\\n    if (Person.ExternalId) {\\r\\n        freeText8 = Person.ExternalId;\\r\\n\\r\\n        // Shorten to 40 chars (this is the max IProtect supports)\\r\\n        freeText8 = freeText8.substring(0, 40);\\r\\n    }\\r\\n\\r\\n    return freeText8;\\r\\n}\\r\\n\\r\\ngetFreeText8();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeText9",
+      "Description": "[Optional]\nExample: Job title code.\nNote: Maximum 40 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Title.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeText10",
+      "Description": "[Optional]\nExample: Department code.\nNote: Maximum 40 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Department.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeSelect4",
+      "Description": "[Optional]\nExample: Location.\nMap with the custom text value name. In the connector script, this will be converted to the IProtect custom text ID.\nConfigure 'whenFreeSelectFieldNotFound' setting to determine behavior when value is not found.\nNote: Maximum 40 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getFreeSelect4() {\\r\\n    let freeSelect4 = null;\\r\\n\\r\\n    if (Person.Location && Person.Location.Name) {\\r\\n        freeSelect4 = Person.Location.Name;\\r\\n\\r\\n        // Shorten to 40 chars (this is the max IProtect supports)\\r\\n        freeSelect4 = freeSelect4.substring(0, 40);\\r\\n    }\\r\\n\\r\\n    return freeSelect4;\\r\\n}\\r\\n\\r\\ngetFreeSelect4();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeSelect5",
+      "Description": "[Optional]\nExample: Gender.\nMap with the custom text value name. In the connector script, this will be converted to the IProtect custom text ID.\nConfigure 'whenFreeSelectFieldNotFound' setting to determine behavior when value is not found.\nNote: Maximum 40 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getFreeSelect5() {\\r\\n    let gender = Person.Details.Gender;\\r\\n    let freeSelect5 = null;\\r\\n\\r\\n    switch (gender) {\\r\\n        case 'M':\\r\\n            freeSelect5 = 'Man';\\r\\n            break;\\r\\n        case 'V':\\r\\n            freeSelect5 = 'Vrouw';\\r\\n            break;\\r\\n        default:\\r\\n            freeSelect5 = null;\\r\\n            break;\\r\\n    }\\r\\n\\r\\n    return freeSelect5;\\r\\n}\\r\\n\\r\\ngetFreeSelect5();\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "Person.FreeSelect7",
+      "Description": "[Optional]\nExample: Location (alternative field).\nMap with the custom text value name. In the connector script, this will be converted to the IProtect custom text ID.\nConfigure 'whenFreeSelectFieldNotFound' setting to determine behavior when value is not found.\nNote: Maximum 41 characters.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getFreeSelect7() {\\n    let result = '';\\n    if(typeof Person.PrimaryContract.Location.Name !== 'undefined' && Person.PrimaryContract.Location.Name){\\n        // Maximum length of the field is 41 characters\\n        result = Person.PrimaryContract.Location.Name.substring(0,41);\\n    }\\n\\n    return result;\\n}\\n\\ngetFreeSelect7();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
