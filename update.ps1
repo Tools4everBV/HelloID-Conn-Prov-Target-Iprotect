@@ -272,8 +272,28 @@ function Get-IProtectDepartment {
 
         [ValidateNotNullOrEmpty()]
         [Object]
-        [ref]$Account
+        [ref]$Account,
+
+        [Parameter()]
+        $WhenDepartmentNotFound
     )
+
+    # Check if DepartmentId is empty
+    if ([string]::IsNullOrEmpty($Account.DepartmentId)) {
+        if ($WhenDepartmentNotFound -eq 'Error') {
+            # Error, no department in lookup value = throw error
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "The lookup value for Department is empty and the connector is configured to stop when this happens."
+                IsError = $true
+            })
+        }
+        else {
+            # Clear, no department in lookup value = clear value
+            Write-Information "Clearing department. (whenDepartmentNotFound = Clear)"
+            $Account.DepartmentId = $null
+        }
+        return
+    }
 
     # Replace special characters in department name to avoid query issues
     $departmentName = $Account.DepartmentId
@@ -299,10 +319,18 @@ function Get-IProtectDepartment {
     
     # When department is not found in IProtect
     if ([string]::IsNullOrEmpty($department.DEPARTMENTID)) {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "Department [$($Account.DepartmentId)] not found in IProtect."
+        if ($WhenDepartmentNotFound -eq 'Error') {
+            # Error, department not found = throw error
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "Department [$($Account.DepartmentId)] not found in IProtect and the connector is configured to stop when this happens."
                 IsError = $true
             })
+        }
+        else {
+            # Clear, department not found = clear value
+            Write-Information "Department [$($Account.DepartmentId)] not found in IProtect, clearing value. (whenDepartmentNotFound = Clear)"
+            $Account.DepartmentId = $null
+        }
     }
     else {
         # Department is found in IProtect, set in IProtect
@@ -321,9 +349,28 @@ function Get-IProtectAutorizationGroup {
 
         [ValidateNotNullOrEmpty()]
         [Object]
-        [ref]$Account
+        [ref]$Account,
+
+        [Parameter()]
+        $WhenAuthorizationGroupNotFound
     )
 
+    # Check if HsId is empty
+    if ([string]::IsNullOrEmpty($Account.HsId)) {
+        if ($WhenAuthorizationGroupNotFound -eq 'Error') {
+            # Error, no authorization group in lookup value = throw error
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "The lookup value for Authorization Group (HsId) is empty and the connector is configured to stop when this happens."
+                IsError = $true
+            })
+        }
+        else {
+            # Clear, no authorization group in lookup value = clear value
+            Write-Information "Clearing authorization group. (whenAuthorizationGroupNotFound = Clear)"
+            $Account.HsId = $null
+        }
+        return
+    }
    
     # Lookup Value is filled in, lookup value in IProtect
     $queryGetHsGroup = "
@@ -344,10 +391,18 @@ function Get-IProtectAutorizationGroup {
     
     # When autorization group is not found in IProtect
     if ([string]::IsNullOrEmpty($hsgroup.HSGROUPID)) {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "HsGroup [$($Account.HsId)] not found in IProtect."
+        if ($WhenAuthorizationGroupNotFound -eq 'Error') {
+            # Error, authorization group not found = throw error
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "HsGroup [$($Account.HsId)] not found in IProtect and the connector is configured to stop when this happens."
                 IsError = $true
             })
+        }
+        else {
+            # Clear, authorization group not found = clear value
+            Write-Information "HsGroup [$($Account.HsId)] not found in IProtect, clearing value. (whenAuthorizationGroupNotFound = Clear)"
+            $Account.HsId = $null
+        }
     }
     else {
         # Autorization group is found in IProtect, set in IProtect
@@ -370,8 +425,28 @@ function Get-IProtectFreeSelectField {
 
         [Parameter()]
         [string]
-        $Field
+        $Field,
+
+        [Parameter()]
+        $WhenFreeSelectFieldNotFound
     )
+
+    # Check if field value is empty
+    if ([string]::IsNullOrEmpty($Account.$Field)) {
+        if ($WhenFreeSelectFieldNotFound -eq 'Error') {
+            # Error, no value in lookup field = throw error
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "The lookup value for $Field is empty and the connector is configured to stop when this happens."
+                IsError = $true
+            })
+        }
+        else {
+            # Clear, no value in lookup field = clear value
+            Write-Information "Clearing $Field. (whenFreeSelectFieldNotFound = Clear)"
+            $Account.$Field = $null
+        }
+        return
+    }
    
     # Lookup Value is filled in, lookup value in IProtect    
     $queryGetCustomFields = "
@@ -394,13 +469,21 @@ function Get-IProtectFreeSelectField {
 
     # When custom field is not found in IProtect
     if ([string]::IsNullOrEmpty($customField.CUSTOMTEXTNR)) {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "$Field [$($Account.$Field)] not found in IProtect."
+        if ($WhenFreeSelectFieldNotFound -eq 'Error') {
+            # Error, freeselect field not found = throw error
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "$Field [$($Account.$Field)] not found in IProtect and the connector is configured to stop when this happens."
                 IsError = $true
             })
+        }
+        else {
+            # Clear, freeselect field not found = clear value
+            Write-Information "$Field [$($Account.$Field)] not found in IProtect, clearing value. (whenFreeSelectFieldNotFound = Clear)"
+            $Account.$Field = $null
+        }
     }
     else {
-        # Department is found in IProtect, set in IProtect
+        # FreeSelect field is found in IProtect, set in IProtect
         $Account.$Field = $customField.CUSTOMTEXTNR
     }
 }
@@ -414,6 +497,15 @@ try {
     $webSession, $jSessionID = Get-JSessionID
     $null = Confirm-AuthenticationResult -JSessionID $jSessionID -WebSession $webSession
 
+    # Build dynamic FREETEXT and FREESELECT fields for query
+    $freeFieldsSelect = [System.Collections.Generic.List[string]]::new()
+    foreach ($property in $actionContext.Data.Person.PSObject.Properties) {
+        if ($property.Name -match '^(FREETEXT|FREESELECT)\d+$') {
+            $freeFieldsSelect.Add("TABLEPERSON.$($property.Name) AS person_$($property.Name)")
+        }
+    }
+    $freeFieldsQuery = if ($freeFieldsSelect.Count -gt 0) { ($freeFieldsSelect -join ",`n        ") + "," } else { "" }
+
     Write-Information 'Verifying if a IProtect account exists'
     $queryGetPerson = "
     SELECT
@@ -423,15 +515,7 @@ try {
         TABLEPERSON.Prefix AS person_Prefix,
         TABLEPERSON.DepartmentId AS person_DepartmentId,
         TABLEPERSON.HsId AS person_HsId,
-        TABLEPERSON.FREETEXT1 AS person_FREETEXT1,
-        TABLEPERSON.FREETEXT2 AS person_FREETEXT2,
-        TABLEPERSON.FREETEXT3 AS person_FREETEXT3,
-        TABLEPERSON.FREETEXT4 AS person_FREETEXT4,
-        TABLEPERSON.FREETEXT5 AS person_FREETEXT5,
-        TABLEPERSON.FREETEXT8 AS person_FREETEXT8,
-        TABLEPERSON.FREETEXT9 AS person_FREETEXT9,
-        TABLEPERSON.FREETEXT10 AS person_FREETEXT10,
-        TABLEPERSON.FREESELECT4 AS person_FREESELECT4,
+        $freeFieldsQuery
         TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
         TABLEEMPLOYEE.Language AS employee_Language,
         TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
@@ -456,39 +540,51 @@ try {
 
     if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'DepartmentId') {
         $splatGetDepartment = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Person
+            JSessionID                = $jSessionID
+            WebSession                = $webSession
+            Account                   = [ref]$actionContext.Data.Person
+            WhenDepartmentNotFound    = $actionContext.Configuration.whenDepartmentNotFound
         }
         Get-IProtectDepartment @splatGetDepartment
     }
 
     if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'HsId') {
         $splatGetHsGroup = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Person
+            JSessionID                          = $jSessionID
+            WebSession                          = $webSession
+            Account                             = [ref]$actionContext.Data.Person
+            WhenAuthorizationGroupNotFound      = $actionContext.Configuration.whenAuthorizationGroupNotFound
         }
         Get-IProtectAutorizationGroup  @splatGetHsGroup
     }
 
-    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'FreeSelect4') {
-        $splatGetFreeSelect4 = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Person
-            Field      = 'FreeSelect4'
+    # Dynamically process all FREESELECT fields in Person
+    foreach ($property in $actionContext.Data.Person.PSObject.Properties) {
+        if ($property.Name -match '^FREESELECT\d+$') {
+            $splatGetFreeSelect = @{
+                JSessionID                      = $jSessionID
+                WebSession                      = $webSession
+                Account                         = [ref]$actionContext.Data.Person
+                Field                           = $property.Name
+                WhenFreeSelectFieldNotFound     = $actionContext.Configuration.whenFreeSelectFieldNotFound
+            }
+            Get-IProtectFreeSelectField @splatGetFreeSelect
         }
-        Get-IProtectFreeSelectField @splatGetFreeSelect4
     }
 
     if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'HsId') {
         $splatGetHsGroup = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Employee
+            JSessionID                          = $jSessionID
+            WebSession                          = $webSession
+            Account                             = [ref]$actionContext.Data.Employee
+            WhenAuthorizationGroupNotFound      = $actionContext.Configuration.whenAuthorizationGroupNotFound
         }
         Get-IProtectAutorizationGroup  @splatGetHsGroup
+    }
+
+    # Check if any lookups failed before proceeding
+    if ($outputContext.AuditLogs.IsError -contains $true) {
+        throw "Error(s) occurred while looking up required values"
     }
 
     $actionList = [System.Collections.Generic.list[object]]::new()
@@ -585,24 +681,19 @@ try {
                         continue
                     }
 
-                    $prop.value = $prop.value -replace "'", "`\`'"
-                    $prop.value = $prop.value -replace "&", "&amp;"
-                    $updateQueryProperties += switch ($prop.Name ) {
-                        'FirstName' { "FirstName = '$($prop.value)'" ; break }
-                        'Name' { "Name = '$($prop.value)'" ; break }
-                        'Prefix' { "Prefix = '$($prop.value)'" ; break }
-                        'DepartmentId' { "DepartmentId = $($prop.value)" ; break }
-                        'HsId' { "HsId = $($prop.value)" ; break }
-                        'FREETEXT1' { "FREETEXT1 = '$($prop.value)'" ; break }
-                        'FREETEXT2' { "FREETEXT2 = '$($prop.value)'" ; break }
-                        'FREETEXT3' { "FREETEXT3 = '$($prop.value)'" ; break }
-                        'FREETEXT4' { "FREETEXT4 = '$($prop.value)'" ; break }
-                        'FREETEXT5' { "FREETEXT5 = '$($prop.value)'" ; break }
-                        'FREETEXT8' { "FREETEXT8 = '$($prop.value)'" ; break }
-                        'FREETEXT9' { "FREETEXT9 = '$($prop.value)'" ; break }
-                        'FREETEXT10' { "FREETEXT10 = '$($prop.value)'" ; break }
-                        'FREESELECT4' { "FREESELECT4 = $($prop.value)" ; break }
+                    # Escape special characters for string values
+                    $escapedValue = $prop.value -replace "'", "`\`'"
+                    $escapedValue = $escapedValue -replace "&", "&amp;"
+                    
+                    # Determine if field requires quotes (text fields) or not (ID/numeric fields)
+                    $fieldValue = switch -Regex ($prop.Name) {
+                        '^(FirstName|Name|Prefix)$' { "$($prop.Name) = '$escapedValue'" ; break }
+                        '^FREETEXT\d+$' { "$($prop.Name) = '$escapedValue'" ; break }
+                        '^(DepartmentId|HsId)$' { "$($prop.Name) = $($prop.value)" ; break }
+                        '^FREESELECT\d+$' { "$($prop.Name) = $($prop.value)" ; break }
+                        default { "$($prop.Name) = '$escapedValue'" ; break }
                     }
+                    $updateQueryProperties += $fieldValue
                 }
 
                 $updateQueryPerson = "
@@ -612,7 +703,7 @@ try {
                         $($updateQueryProperties -join ",`n" )
                     Where
                     PersonId = $($personObject.PersonId)"
-                # Write-Warning $updateQueryPerson
+
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Updating IProtect Person account with accountReference: [$($actionContext.References.Account)]"
@@ -658,7 +749,7 @@ try {
                         $($updateQueryProperties -join ",`n" )
                     Where
                         EmployeeId = $($employeeObject.employeeId)"
-                # Write-Warning $updateQueryEmployee
+                        
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Updating IProtect Employee account with accountReference: [$($actionContext.References.Account)]"
@@ -718,12 +809,21 @@ catch {
         $auditMessage = "Could not update IProtect account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
-            IsError = $true
-        })
+    
+    # Only log when there are no lookup errors, as these generate their own audit message
+    if (-not ($ex.Exception.Message -eq "Error(s) occurred while looking up required values")) {
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = $auditMessage
+                IsError = $true
+            })
+    }
 }
 finally {
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if ($outputContext.AuditLogs.IsError -notContains $true) {
+        $outputContext.Success = $true
+    }
+    
     if ($null -ne $WebSession) {
         $splatLogout = @{
             JSessionID = $jSessionID
