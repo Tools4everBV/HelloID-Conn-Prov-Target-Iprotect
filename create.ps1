@@ -220,6 +220,7 @@ function Invoke-IProtectQuery {
         }
     }
     catch {
+        Write-Warning "Query: $query"
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -342,7 +343,7 @@ function Get-IProtectAutorizationGroup {
 
     $hsgroup = Invoke-IProtectQuery @splatGetHsGroup
     
-    # When department is not found in IProtect
+    # When autorization group is not found in IProtect
     if ([string]::IsNullOrEmpty($hsgroup.HSGROUPID)) {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "HsGroup [$($Account.HsId)] not found in IProtect."
@@ -350,7 +351,7 @@ function Get-IProtectAutorizationGroup {
             })
     }
     else {
-        # Department is found in IProtect, set in IProtect
+        # Autorization group is found in IProtect, set in IProtect
         $Account.HsId = $hsgroup.HSGROUPID
     }
 }
@@ -390,7 +391,7 @@ function Get-IProtectFreeSelectField {
 
     $customFields = Invoke-IProtectQuery @splatGetCustomFields
 
-    $customField = $customFields | Where-object { $_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field }
+    $customField = $customFields | Where-object { $_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field -and -not[String]::IsNullOrEmpty($_.CUSTOMTEXTNR) }
 
     # When custom field is not found in IProtect
     if ([string]::IsNullOrEmpty($customField.CUSTOMTEXTNR)) {
@@ -401,7 +402,7 @@ function Get-IProtectFreeSelectField {
     }
     else {
         # Department is found in IProtect, set in IProtect
-        $Account.$Field = $customField.CustomTextNr
+        $Account.$Field = $customField.CUSTOMTEXTNR
     }
 }
 #endregion
@@ -425,12 +426,21 @@ try {
             throw 'Correlation is enabled but [accountFieldValue] is empty. Please make sure it is correctly mapped'
         }
 
+        # Build dynamic FREETEXT and FREESELECT fields for query
+        $freeFieldsSelect = [System.Collections.Generic.List[string]]::new()
+        foreach ($property in $actionContext.Data.Person.PSObject.Properties) {
+            if ($property.Name -match '^(FREETEXT|FREESELECT)\d+$') {
+                $freeFieldsSelect.Add("TABLEPERSON.$($property.Name) AS $($property.Name)")
+            }
+        }
+        $freeFieldsQuery = if ($freeFieldsSelect.Count -gt 0) { ",`n        " + ($freeFieldsSelect -join ",`n        ") } else { "" }
+
         $queryGetEmployee = "
         SELECT
         TABLEEMPLOYEE.PERSONID AS person_personId,
         TABLEPERSON.NAME AS person_Name,
         TABLEPERSON.FirstName AS person_FirstName,
-        TABLEPERSON.Prefix AS person_Prefix,
+        TABLEPERSON.Prefix AS person_Prefix$freeFieldsQuery,
         TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
         TABLEEMPLOYEE.Language AS employee_Language,
         TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
@@ -474,7 +484,7 @@ try {
             TABLEPERSON.PERSONID AS person_personId,
             TABLEPERSON.NAME AS person_Name,
             TABLEPERSON.FirstName AS person_FirstName,
-            TABLEPERSON.Prefix AS person_Prefix,
+            TABLEPERSON.Prefix AS person_Prefix$freeFieldsQuery,
             TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
             TABLEEMPLOYEE.Language AS employee_Language,
             TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
@@ -517,13 +527,17 @@ try {
         Get-IProtectAutorizationGroup  @splatGetHsGroup
     }
 
-    if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'DepartmentId') {
-        $splatGetDepartment = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Employee
+    # Dynamically process all FREESELECT fields in Person
+    foreach ($property in $actionContext.Data.Person.PSObject.Properties) {
+        if ($property.Name -match '^FREESELECT\d+$') {
+            $splatGetFreeSelect = @{
+                JSessionID = $jSessionID
+                WebSession = $webSession
+                Account    = [ref]$actionContext.Data.Person
+                Field      = $property.Name
+            }
+            Get-IProtectFreeSelectField @splatGetFreeSelect
         }
-        Get-IProtectDepartment @splatGetDepartment
     }
 
     if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'HsId') {
@@ -534,17 +548,6 @@ try {
         }
         Get-IProtectAutorizationGroup  @splatGetHsGroup
     }
-
-    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'FreeSelect7') {
-        $splatGetFreeSelect7 = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Person
-            Field      = 'FreeSelect7'
-        }
-        Get-IProtectFreeSelectField @splatGetFreeSelect7
-    }
-    
 
     $actionList = [System.Collections.Generic.list[string]]::new()
     $employeeCount = ($correlateEmployeeAccount | Measure-Object).Count
@@ -576,6 +579,12 @@ try {
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 $queryProperties = @()
                 foreach ($prop in $actionContext.Data.Person.PSObject.Properties) {
+                    # Check if value is null or empty - if so, use null instead of empty string
+                    if ([string]::IsNullOrEmpty($prop.value)) {
+                        $queryProperties += 'NULL'
+                        continue
+                    }
+
                     $prop.value = $prop.value -replace "'", "`\`'"
                     $prop.value = $prop.value -replace "&", "&amp;"
                     $queryProperties += switch ($prop.Name ) {
@@ -584,8 +593,15 @@ try {
                         'PREFIX' { "'$($prop.value)'" ; break }
                         'DEPARTMENTID' { "$($prop.value)" ; break }
                         'HSID' { "$($prop.value)" ; break }
+                        'FREETEXT1' { "'$($prop.value)'" ; break }
+                        'FREETEXT2' { "'$($prop.value)'" ; break }
+                        'FREETEXT3' { "'$($prop.value)'" ; break }
                         'FREETEXT4' { "'$($prop.value)'" ; break }
-                        'FREESELECT7' { "$($prop.value)" ; break }
+                        'FREETEXT5' { "'$($prop.value)'" ; break }
+                        'FREETEXT8' { "'$($prop.value)'" ; break }
+                        'FREETEXT9' { "'$($prop.value)'" ; break }
+                        'FREETEXT10' { "'$($prop.value)'" ; break }
+                        'FREESELECT4' { "$($prop.value)" ; break }
                     }
                 }
 
@@ -594,7 +610,7 @@ try {
                 $queryCreatePerson = "
                 INSERT INTO Person ($($columnsCreatePerson))
                 VALUES ($($queryProperties -join ', '))"
-
+# Write-Warning $queryCreatePerson
                 $queryRetrievePerson = "
                     SELECT
                     TABLEPERSON.PERSONID AS personId,
@@ -603,8 +619,15 @@ try {
                     TABLEPERSON.Prefix AS Prefix,
                     TABLEPERSON.DEPARTMENTID AS DEPARTMENTID,
                     TABLEPERSON.HSID AS HSID,
+                    TABLEPERSON.FREETEXT1 AS FREETEXT1,
+                    TABLEPERSON.FREETEXT2 AS FREETEXT2,
+                    TABLEPERSON.FREETEXT3 AS FREETEXT3,
                     TABLEPERSON.FREETEXT4 AS FREETEXT4,
-                    TABLEPERSON.FREESELECT7 AS FREESELECT7,
+                    TABLEPERSON.FREETEXT5 AS FREETEXT5,
+                    TABLEPERSON.FREETEXT8 AS FREETEXT8,
+                    TABLEPERSON.FREETEXT9 AS FREETEXT9,
+                    TABLEPERSON.FREETEXT10 AS FREETEXT10,
+                    TABLEPERSON.FREESELECT4 AS FREESELECT4,
                     TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
                     TABLEEMPLOYEE.SALARYNR AS employee_salaryNr
                     FROM person TABLEPERSON
@@ -663,6 +686,7 @@ try {
                 # Create Employee
                 $queryProperties = @()
                 foreach ($prop in $actionContext.Data.Employee.PSObject.Properties) {
+                    
                     $queryProperties += switch ($prop.Name ) {
                         'BIRTHDATE' { "$( if (-not ([string]::IsNullOrEmpty($prop.value))) { "#$($prop.value)#" } else{ 'NULL' } )" ; break }
                         'LANGUAGE' { "$($prop.value)" ; break }
@@ -677,7 +701,7 @@ try {
                 $queryCreateEmployee = "
                 INSERT INTO Employee (PERSONID, $columnsCreateEmployee)
                 VALUES ($($outputContext.AccountReference), $($queryProperties -join ', '))"
-
+# Write-Warning $queryCreateEmployee
                 $queryRetrieveEmployee = "
                 SELECT
                     EMPLOYEEID,
