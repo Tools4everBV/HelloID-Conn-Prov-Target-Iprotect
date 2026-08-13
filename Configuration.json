@@ -29,5 +29,62 @@
       "description": "The URL to the API.",
       "required": true
     }
+  },
+  {
+    "key": "whenDepartmentNotFound",
+    "type": "radio",
+    "defaultValue": "Error",
+    "templateOptions": {
+      "label": "When department not found",
+      "required": true,
+      "options": [
+        {
+          "value": "Error",
+          "label": "Stop processing and generate an error"
+        },
+        {
+          "value": "Clear",
+          "label": "Clear the department field in IProtect"
+        }
+      ]
+    }
+  },
+  {
+    "key": "whenAuthorizationGroupNotFound",
+    "type": "radio",
+    "defaultValue": "Error",
+    "templateOptions": {
+      "label": "When authorization group not found",
+      "required": true,
+      "options": [
+        {
+          "value": "Error",
+          "label": "Stop processing and generate an error"
+        },
+        {
+          "value": "Clear",
+          "label": "Clear the authorization group field in IProtect"
+        }
+      ]
+    }
+  },
+  {
+    "key": "whenFreeSelectFieldNotFound",
+    "type": "radio",
+    "defaultValue": "Error",
+    "templateOptions": {
+      "label": "When FreeSelect field not found",
+      "required": true,
+      "options": [
+        {
+          "value": "Error",
+          "label": "Stop processing and generate an error"
+        },
+        {
+          "value": "Clear",
+          "label": "Clear the FreeSelect field in IProtect"
+        }
+      ]
+    }
   }
 ]
