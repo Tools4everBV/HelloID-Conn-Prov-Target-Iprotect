@@ -219,6 +219,7 @@ function Invoke-IProtectQuery {
         }
     }
     catch {
+        Write-Warning "Query: $query"
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -341,7 +342,7 @@ function Get-IProtectAutorizationGroup {
 
     $hsgroup = Invoke-IProtectQuery @splatGetHsGroup
     
-    # When department is not found in IProtect
+    # When autorization group is not found in IProtect
     if ([string]::IsNullOrEmpty($hsgroup.HSGROUPID)) {
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "HsGroup [$($Account.HsId)] not found in IProtect."
@@ -349,7 +350,7 @@ function Get-IProtectAutorizationGroup {
             })
     }
     else {
-        # Department is found in IProtect, set in IProtect
+        # Autorization group is found in IProtect, set in IProtect
         $Account.HsId = $hsgroup.HSGROUPID
     }
 }
@@ -389,7 +390,7 @@ function Get-IProtectFreeSelectField {
 
     $customFields = Invoke-IProtectQuery @splatGetCustomFields
 
-    $customField = $customFields | Where-object { $_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field }
+    $customField = $customFields | Where-object { $_.COLUMNNAME -eq ($Field.ToUpper()) -and $_.LAN1TEXT -eq $Account.$Field -and -not[String]::IsNullOrEmpty($_.CUSTOMTEXTNR) }
 
     # When custom field is not found in IProtect
     if ([string]::IsNullOrEmpty($customField.CUSTOMTEXTNR)) {
@@ -400,7 +401,7 @@ function Get-IProtectFreeSelectField {
     }
     else {
         # Department is found in IProtect, set in IProtect
-        $Account.$Field = $customField.CustomTextNr
+        $Account.$Field = $customField.CUSTOMTEXTNR
     }
 }
 #endregion
@@ -422,8 +423,15 @@ try {
         TABLEPERSON.Prefix AS person_Prefix,
         TABLEPERSON.DepartmentId AS person_DepartmentId,
         TABLEPERSON.HsId AS person_HsId,
-        TABLEPERSON.FreeText4 AS person_FreeText4,
-        TABLEPERSON.FreeSelect7 AS person_FreeSelect7,
+        TABLEPERSON.FREETEXT1 AS person_FREETEXT1,
+        TABLEPERSON.FREETEXT2 AS person_FREETEXT2,
+        TABLEPERSON.FREETEXT3 AS person_FREETEXT3,
+        TABLEPERSON.FREETEXT4 AS person_FREETEXT4,
+        TABLEPERSON.FREETEXT5 AS person_FREETEXT5,
+        TABLEPERSON.FREETEXT8 AS person_FREETEXT8,
+        TABLEPERSON.FREETEXT9 AS person_FREETEXT9,
+        TABLEPERSON.FREETEXT10 AS person_FREETEXT10,
+        TABLEPERSON.FREESELECT4 AS person_FREESELECT4,
         TABLEEMPLOYEE.BirthDate AS employee_BirthDate,
         TABLEEMPLOYEE.Language AS employee_Language,
         TABLEEMPLOYEE.EMPLOYEEID AS employee_employeeId,
@@ -464,23 +472,14 @@ try {
         Get-IProtectAutorizationGroup  @splatGetHsGroup
     }
 
-    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'FreeSelect7') {
-        $splatGetFreeSelect7 = @{
+    if ($actionContext.Data.Person.PSObject.Properties.Name -Contains 'FreeSelect4') {
+        $splatGetFreeSelect4 = @{
             JSessionID = $jSessionID
             WebSession = $webSession
             Account    = [ref]$actionContext.Data.Person
-            Field      = 'FreeSelect7'
+            Field      = 'FreeSelect4'
         }
-        Get-IProtectFreeSelectField @splatGetFreeSelect7
-    }
-
-    if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'DepartmentId') {
-        $splatGetDepartment = @{
-            JSessionID = $jSessionID
-            WebSession = $webSession
-            Account    = [ref]$actionContext.Data.Employee
-        }
-        Get-IProtectDepartment @splatGetDepartment
+        Get-IProtectFreeSelectField @splatGetFreeSelect4
     }
 
     if ($actionContext.Data.Employee.PSObject.Properties.Name -Contains 'HsId') {
@@ -585,7 +584,7 @@ try {
                         $updateQueryProperties += "$($prop.name) = NULL"
                         continue
                     }
-                
+
                     $prop.value = $prop.value -replace "'", "`\`'"
                     $prop.value = $prop.value -replace "&", "&amp;"
                     $updateQueryProperties += switch ($prop.Name ) {
@@ -594,8 +593,15 @@ try {
                         'Prefix' { "Prefix = '$($prop.value)'" ; break }
                         'DepartmentId' { "DepartmentId = $($prop.value)" ; break }
                         'HsId' { "HsId = $($prop.value)" ; break }
-                        'FreeText4' { "FREETEXT4 = '$($prop.value)'" ; break }
-                        'FreeSelect7' { "FREESELECT7 = $($prop.value)" ; break }
+                        'FREETEXT1' { "FREETEXT1 = '$($prop.value)'" ; break }
+                        'FREETEXT2' { "FREETEXT2 = '$($prop.value)'" ; break }
+                        'FREETEXT3' { "FREETEXT3 = '$($prop.value)'" ; break }
+                        'FREETEXT4' { "FREETEXT4 = '$($prop.value)'" ; break }
+                        'FREETEXT5' { "FREETEXT5 = '$($prop.value)'" ; break }
+                        'FREETEXT8' { "FREETEXT8 = '$($prop.value)'" ; break }
+                        'FREETEXT9' { "FREETEXT9 = '$($prop.value)'" ; break }
+                        'FREETEXT10' { "FREETEXT10 = '$($prop.value)'" ; break }
+                        'FREESELECT4' { "FREESELECT4 = $($prop.value)" ; break }
                     }
                 }
 
@@ -606,7 +612,7 @@ try {
                         $($updateQueryProperties -join ",`n" )
                     Where
                     PersonId = $($personObject.PersonId)"
-
+                # Write-Warning $updateQueryPerson
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Updating IProtect Person account with accountReference: [$($actionContext.References.Account)]"
@@ -652,7 +658,7 @@ try {
                         $($updateQueryProperties -join ",`n" )
                     Where
                         EmployeeId = $($employeeObject.employeeId)"
-
+                # Write-Warning $updateQueryEmployee
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 if (-not($actionContext.DryRun -eq $true)) {
                     Write-Information "Updating IProtect Employee account with accountReference: [$($actionContext.References.Account)]"
