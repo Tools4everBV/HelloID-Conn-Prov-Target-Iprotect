@@ -19,7 +19,7 @@
     - [Lifecycle scripts](#lifecycle-scripts)
   - [Getting started](#getting-started)
     - [HelloID Icon URL](#helloid-icon-url)
-    - [Prerequisites](#prerequisites)
+    - [Requirements](#requirements)
     - [Connection settings](#connection-settings)
     - [Configuration options](#configuration-options)
     - [Correlation configuration](#correlation-configuration)
@@ -39,7 +39,7 @@
     - [Permission Grants and Revokes on AccessKeys](#permission-grants-and-revokes-on-accesskeys)
     - [SQL Queries](#sql-queries)
     - [Reboarding](#reboarding)
-  - [Development Resources](#development-resources)
+  - [Development resources](#development-resources)
     - [API endpoints](#api-endpoints)
     - [API documentation](#api-documentation)
   - [Getting help](#getting-help)
@@ -88,21 +88,22 @@ URL of the icon used for the HelloID Provisioning target system.
 https://raw.githubusercontent.com/Tools4everBV/HelloID-Conn-Prov-Target-Iprotect/refs/heads/main/Icon.png
 ```
 
-### Prerequisites
+### Requirements
 
-- **IProtect Permissions**:<br>
-An IProtect account ("systeemgebruiker") must be created with sufficient rights to query and update the employees and AccessKeys
-Make sure that the box "Synchronisatie Beheerder" is checked in the "Detail Systeemgebruiker", and that the account has sufficient rights to query and update the IProtect database.
-- To verify this: login into the web GUI of IProtect with this account and check: The ability to successfully query the accesskey, employee and user tables with this account
+Before implementing this connector, ensure the following requirements are met:
 
-- **Local Agent**:<br>
-The connector should be run from a local agent.
+**IProtect API Access:**
 
-- **Concurrent sessions**:<br>
-Concurrent sessions in HelloID should be set to a **maximum of 1**! This is because a logout action may logout all connected sessions.
+- An IProtect account ("systeemgebruiker") must be created with sufficient rights to query and update employees and AccessKeys
+- The "Synchronisatie Beheerder" checkbox must be checked in the "Detail Systeemgebruiker" settings
+- The account must have sufficient permissions to query and update the IProtect database
+- To verify: Login to the IProtect web GUI with this account and confirm the ability to successfully query the accesskey, employee, and user tables
 
-- **SubPermissions**:<br>
-- Enable SubPermission to be able to see to which accessKeys the permissions are granted.
+**HelloID Configuration:**
+
+- **Local Agent**: The connector must be run from a local HelloID agent (cloud agent not supported)
+- **Concurrent Sessions**: HelloID concurrent sessions must be set to a **maximum of 1**. This is required because a logout action in IProtect may terminate all connected sessions simultaneously
+- **SubPermissions**: SubPermissions must be enabled in the KeyGroup permissions block configuration. This is required because permissions are granted to AccessKeys (not to Person/Employee accounts), and a single account can have multiple AccessKeys. The connector grants permissions to each AccessKey individually, requiring SubPermissions to track which AccessKey has which KeyGroup permission.
 
 ### Connection settings
 
@@ -137,7 +138,8 @@ The correlation configuration is used to specify which properties will be used t
 | Person correlation field  | `ExternalId`        |
 | Account correlation field | `Employee.SalaryNR` |
 
-> More information about `Employee` and `Person` correlation please refer to: [Correlation on FirstName and (Last) Name](#correlation-on-firstname-and-last-name)
+> [!NOTE]
+> The connector uses a two-stage correlation approach. First, it attempts to correlate based on `Employee.SalaryNR`. If no Employee is found, it performs a secondary correlation on the Person object using `FirstName` and `Name` to prevent duplicate accounts. See [Correlation on FirstName and (Last) Name](#correlation-on-firstname-and-last-name) for more details.
 
 > [!TIP]
 > _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
@@ -180,32 +182,71 @@ The account reference is populated with a composite object containing:
 
 IProtect enforces a maximum character limit of 40 characters on both FREETEXT and FREESELECT fields. Values exceeding this limit will be rejected by IProtect.
 
+> [!WARNING]
+> Ensure values mapped to FREETEXT and FREESELECT fields do not exceed 40 characters. Use the `.substring(0, 40)` method in your field mapping to truncate values if needed. Values longer than 40 characters will cause errors during account creation or updates.
+
 ### AccessKeys Not Managed
-- The scope of the connector is to manage Persons and Employees, as well as perform grants, revokes, and enable or disable linked AccessKeys. However, managing AccessKeys—such as creating, updating, or linking them—is **NOT** in scope.
-- This also means that when a person receives a new or additional AccessKey, the AccessKey must be manually enabled, and the permissions should be copied from the existing key.
-- With one exception, the linked AccessKey will be removed from the account during the delete action. See [Delete Account with Removed Linked AccessKeys](#delete-account-with-removed-linked-accesskeys).
+
+The scope of the connector is to manage Persons and Employees, as well as perform grants, revokes, and enable or disable linked AccessKeys. However, managing AccessKeys—such as creating, updating, or linking them—is **NOT** in scope.
+
+> [!WARNING]
+> AccessKey management (creation, updates, linking) is not handled by this connector. When a person receives a new or additional AccessKey:
+> - The AccessKey must be manually enabled in IProtect
+> - Permissions should be manually copied from an existing AccessKey
+> - The connector will not automatically apply permissions to newly linked AccessKeys
+
+> [!NOTE]
+> The only exception is the delete action, which automatically unlinks AccessKeys from the account. See [Delete Account with Removed Linked AccessKeys](#delete-account-with-removed-linked-accesskeys).
 
 ### Employee and Person Account
+
 Although this connector manages Employees, we cannot ignore the Person object. This is a separate object within IProtect. An Employee object cannot exist without a Person object; however, the reverse is possible. The field mapping is divided into Person and Employee properties, with the connector code handling the rest.
+
+> [!NOTE]
+> The relationship between Person and Employee objects:
+> - Every Employee must have a linked Person object
+> - A Person can exist without an Employee
+> - The connector manages both objects together
+> - The linking key is `PersonId`
 
 ### Correlation on FirstName and (Last) Name
 During correlation, the connector correlates based on the Employee.SalaryNR using a combined query to retrieve both the Person and Employee objects at once. Once this query returns a positive result, the account will be correlated. If no Employee is found, a separate query is performed to retrieve only the Person object based on `FirstName` and (Last) `Name` to avoid errors and duplicate accounts, and correlates the person account when one is found without a linked Employee.
 
 ### Enable and Disable Linked AccessKey
-- The Enable and Disable scripts grant and revoke the AccessKey linked to a user account in IProtect, but not the account itself. An Account object does not have an active property.
-- The connector does not update newly assigned AccessKeys that are linked after "Account Access" has been granted.
+
+The Enable and Disable scripts target the AccessKeys linked to a user account in IProtect, not the account itself. Person and Employee objects do not have an active/enabled property.
+
+> [!IMPORTANT]
+> Enable/Disable behavior:
+> - Enable sets the `VALID` property to `true` on all linked AccessKeys
+> - Disable sets the `VALID` property to `false` on all linked AccessKeys
+> - The Person and Employee account itself is not modified
+> - Only AccessKeys that are linked at the time of enable/disable are affected
+> - AccessKeys linked after "Account Access" is granted will not be automatically updated
 
 ### Delete Account with Removed Linked AccessKeys
-- Before deleting the Person and Employee, the Delete action first unlinks all linked AccessKeys.
-- By unlinking the AccessKey from the account. The connector does not remove unmanaged permissions from the AccessKey, which means, in theory, that the unlinked AccessKey may still contain permissions. Keep this in mind when linking a previously used AccessKey to a new account.
-- If there are still unmanaged AccessKeys on the account, the deletion of the Person associated with the account may fail.
+
+Before deleting the Person and Employee, the Delete action first unlinks all linked AccessKeys.
+
+> [!WARNING]
+> Delete behavior and limitations:
+> - All linked AccessKeys are automatically unlinked before account deletion
+> - The connector does not remove unmanaged permissions from the AccessKey
+> - Unlinked AccessKeys may still contain permissions from previous assignments
+> - If the account has unmanaged AccessKeys that cannot be unlinked, the deletion may fail
+> - Be cautious when linking previously used AccessKeys to new accounts, as they may retain old permissions
 
 ### Permission Grants and Revokes on AccessKeys
-- KeyGroup permissions are granted or revoked on each linked AccessKey of the IProtect account.
-- If no linked AccessKey is present during the permission granting process, the grant script will result in an error and retry until an AccessKey is linked.
-- The connector does not update newly assigned AccessKeys after the permission has been granted.
-- The best practice should be when a person receives a new AccessKey the granted permissions are copied for an existing Key.
-- To apply permissions to newly linked AccessKeys with HelloID, you can place the grant script asan update script and manually run "Force update permissions in the definition."
+
+KeyGroup permissions are granted or revoked on each linked AccessKey of the IProtect account.
+
+> [!IMPORTANT]
+> Permission management behavior:
+> - Permissions are applied to **each individual AccessKey** linked to the account, not to the Person or Employee
+> - If no AccessKey is linked when granting a permission, the grant will fail and retry until an AccessKey is available
+> - Newly linked AccessKeys after a permission grant will not automatically receive the permission
+> - Best practice: When a person receives a new AccessKey, manually copy permissions from an existing AccessKey
+> - To apply permissions to newly linked AccessKeys via HelloID, use the grant script as an update script and manually run "Force update permissions" in the definition
 
 ### SQL Queries
 - The connector largely consists of SQL queries that are sent to the IProtect endpoints. There are some restrictions compared to standard SQL, which can be found in the documentation.
@@ -214,20 +255,23 @@ During correlation, the connector correlates based on the Employee.SalaryNR usin
 ### Reboarding
 Reboarding an employee after they are deleted from HelloID is supported, with one side note. AccessKeys are automatically unlinked from the account during the delete action and will not be present when the employee is recreated.
 
-## Development Resources
+## Development resources
 
 ### API endpoints
 
-The following endpoints are used by the connector
+The following endpoints are used by the connector:
 
-| Endpoint          | Description                      |
-| ----------------- | -------------------------------- |
-| /xmlsql           | Session cookie and all sql calls |
-| /j_security_check | Session login                    |
+| Endpoint          | Method | Description                      |
+| ----------------- | ------ | -------------------------------- |
+| /xmlsql           | POST   | Session cookie and all sql calls |
+| /j_security_check | POST   | Session login                    |
 
 ### API documentation
-- "iProtect API v2.10.doc   Description of the xmlsql api, used for generic sql queries and updates
-- "Jdbc handleiding v0.3.pdf"   Some info regarding the (limitations of) the supported sql
+
+The IProtect API documentation is provided by the vendor:
+
+- **iProtect API v2.10.doc** - Description of the xmlsql API, used for generic SQL queries and updates
+- **Jdbc handleiding v0.3.pdf** - Information regarding the limitations of the supported SQL syntax
 
 ## Getting help
 
