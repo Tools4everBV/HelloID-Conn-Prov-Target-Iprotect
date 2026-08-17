@@ -4,10 +4,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [1.2.0] - 01-07-2025
 
-Added support for retrieving departments autorizationGroups and freeSelectFields.
-Added support for ' and &
-Added support for importPermissions
-Several other small fixes
+### Added
+- Added support for retrieving departments, authorization groups and FreeSelect fields
+- Added support for import permissions script
+- Added automatic escaping of special characters (apostrophes and ampersands) in SQL queries to prevent errors
+- Added configuration options to control behavior when lookups fail (Error or Clear)
+- Added dynamic field detection for FREETEXT and FREESELECT fields
+
+### Fixed
+- Fixed SQL injection issues with special characters in department names and other lookup fields
+- Several other small fixes
 
 ## [1.1.0] - 20-03-2025
 
